@@ -245,6 +245,19 @@ if __name__ == '__main__':
     bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
     
     results['Train_GP_on_Freq'] = bcc_pred
+    
+    # PUT KERNELS AROUND THE OBSERVATION POINTS   ----------------------------------------------------------------------
+    
+    # get values for training points by taking frequencies
+    counts_pos = coo_matrix((C[:,3]==1, (C[:,1], C[:,2])), (nx,ny))
+    counts_neg = coo_matrix((C[:,3]==0, (C[:,1], C[:,2])), (nx,ny))
+    density_estimates = counts_pos / (counts_pos + counts_neg)
+    
+    E_t_pos = density_estimates[(counts_pos+counts_neg)>0]
+    E_t_pos = E_t_pos.reshape((E_t_pos.size,1))
+    E_t_neg = 1-E_t_pos
+        
+    #kernels and sum. Iterate and try to maximise posterior probability to learn the kernel parameters.
         
     # EVALUATE ALL RESULTS ---------------------------------------------------------------------------------------------
     evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
