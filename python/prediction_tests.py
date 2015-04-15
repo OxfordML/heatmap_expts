@@ -8,6 +8,8 @@ import logging
 import numpy as np
 from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
+from ibcc import IBCC
+from scipy.sparse import coo_matrix
 
 class UshahidiDataHandler(object):
     
@@ -164,10 +166,10 @@ class UshahidiDataHandler(object):
         self.C = C
         print "Number of type one reports: " + str(self.C[1].shape[0])
 
-
 if __name__ == '__main__':
     print "Run tests to determine the accuracy of the bccheatmaps method."
     
+    #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
     #Load up some ground truth
 #     goldfile = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_182_188_726_720_100_100.csv"
 #     tgrid = np.genfromtxt(goldfile).astype(int)
@@ -176,45 +178,98 @@ if __name__ == '__main__':
     
     nx = 1000
     ny = 1000
-    
-    #Unsupervised learning 
     datahandler = UshahidiDataHandler(nx,ny, '/home/edwin/Datasets/ushahidi/')
     datahandler.load_ush_data()
     K = datahandler.K
     print "No. report types = %i" % K
-    C = datahandler.C[1]   
+    C = datahandler.C[1]
+    
+    # default hyperparameters
     alpha0 = np.array([[2.0, 1.0], [1.0, 2.0]])
     nu0 = np.array([5,1])    
-    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K)
+    
+    # containers for results
+    results = {}
+    
+    # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
+    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
     combiner.minNoIts = 5
     combiner.maxNoIts = 200
     combiner.convThreshold = 0.1
-    combiner.useLowerBound = False
 
+    # Need to replace with optimised version!
     bcc_pred = combiner.combine_classifications(C)
     bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
-    bcc_mpr = combiner.get_mean_kappa()
-    bcc_stdPred = combiner.get_sd_kappa()
     
+    results['heatmapbcc'] = bcc_pred
+    
+    # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
+    
+    # run standard IBCC
+    combiner = IBCC(2, 2, alpha0, nu0, K)
+    combiner.minNoIts = 5
+    combiner.maxNoIts = 200
+    combiner.convThreshold = 0.1
+
+    bcc_pred = combiner.combine_classifications(C)
+
+    # use IBCC output to train GP
+    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    combiner.minNoIts = 1
+    combiner.maxNoIts = 1
+    combiner.E_t = bcc_pred
+    bcc_pred = combiner.combine_classifications(C)
+    
+    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    
+    results['IBCC_then_GP'] = bcc_pred
+    
+    # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
+    
+    # get values for training points by taking frequencies
+    counts_pos = coo_matrix((C[:,3]==1, (C[:,1], C[:,2])), (nx,ny))
+    counts_neg = coo_matrix((C[:,3]==0, (C[:,1], C[:,2])), (nx,ny))
+    density_estimates = counts_pos / (counts_pos + counts_neg)
+    
+    E_t_pos = density_estimates[(counts_pos+counts_neg)>0]
+    E_t_pos = E_t_pos.reshape((E_t_pos.size,1))
+    E_t_neg = 1-E_t_pos
+        
+    #run GP
+    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    combiner.minNoIts = 1
+    combiner.maxNoIts = 1
+    combiner.E_t = np.concatenate((E_t_pos, E_t_neg), axis=0)
+    bcc_pred = combiner.combine_classifications(C)
+    
+    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    
+    results['Train_GP_on_Freq'] = bcc_pred
+        
+    # EVALUATE ALL RESULTS ---------------------------------------------------------------------------------------------
     evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
-    testresults = bcc_pred.flatten()
-    labels = tgrid.flatten()
-    acc = np.sum(np.round(testresults)==labels) / float(len(labels))
-    print acc  
     
-    defaultval = nu0[1] / float(np.sum(nu0))
-    labels_nondef = labels[testresults!=defaultval] # labels where we have made a non-default prediction
-    testresults_nondef = testresults[testresults!=defaultval] 
-    mce = evaluator.eval_crossentropy(testresults_nondef, labels_nondef) * len(labels_nondef)
-    mce_def = evaluator.eval_crossentropy(np.array([1-defaultval]), np.array([0]))
-    nneg_def = np.sum(labels==0) - np.sum(labels_nondef==0)
-    mce += mce_def*nneg_def
-    mce_def = evaluator.eval_crossentropy(np.array([defaultval]), np.array([1]))
-    npos_def = np.sum(labels==1) - np.sum(labels_nondef==1)    
-    mce += mce_def*npos_def
-    # Make this the cross entropy per data point
-    mce = mce/len(labels)
-    print str(mce)
+    for method in results:
+        print "Results for %s" % method
+        pred = results[method]
+        testresults = pred.flatten()
+        labels = tgrid.flatten()
+        acc = np.sum(np.round(testresults)==labels) / float(len(labels))
+        print acc  
     
-    auc,ap = evaluator.eval_auc(testresults,labels)
-    print str(auc)
+        defaultval = nu0[1] / float(np.sum(nu0))
+        labels_nondef = labels[testresults!=defaultval] # labels where we have made a non-default prediction
+        testresults_nondef = testresults[testresults!=defaultval] 
+        mce = evaluator.eval_crossentropy(testresults_nondef, labels_nondef) * len(labels_nondef)
+        mce_def = evaluator.eval_crossentropy(np.array([1-defaultval]), np.array([0]))
+        nneg_def = np.sum(labels==0) - np.sum(labels_nondef==0)
+        mce += mce_def*nneg_def
+        mce_def = evaluator.eval_crossentropy(np.array([defaultval]), np.array([1]))
+        npos_def = np.sum(labels==1) - np.sum(labels_nondef==1)    
+        mce += mce_def*npos_def
+        # Make this the cross entropy per data point
+        mce = mce/len(labels)
+        print str(mce)
+        
+        auc,ap = evaluator.eval_auc(testresults,labels)
+        print str(auc)
