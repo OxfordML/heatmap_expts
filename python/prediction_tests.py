@@ -10,6 +10,7 @@ from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
 from ibcc import IBCC
 from scipy.sparse import coo_matrix
+from scipy.stats import gaussian_kde
 
 class UshahidiDataHandler(object):
     
@@ -22,7 +23,7 @@ class UshahidiDataHandler(object):
     minlon = -72.6#-73.1
     maxlon = -72.0#-71.7   
     
-    datadir = '../../HeatMapBCC/data'
+    datadir = './data'
     
     C = []
     
@@ -169,16 +170,19 @@ class UshahidiDataHandler(object):
 if __name__ == '__main__':
     print "Run tests to determine the accuracy of the bccheatmaps method."
     
+    logging.basicConfig(level=logging.DEBUG)
+
+    
     #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
     #Load up some ground truth
 #     goldfile = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_182_188_726_720_100_100.csv"
 #     tgrid = np.genfromtxt(goldfile).astype(int)
-    goldfile = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.npy"
+    goldfile = "./data/haiti_unosat_target2.npy"
     tgrid = np.load(goldfile).astype(int)    
     
     nx = 1000
     ny = 1000
-    datahandler = UshahidiDataHandler(nx,ny, '/home/edwin/Datasets/ushahidi/')
+    datahandler = UshahidiDataHandler(nx,ny, './data/')
     datahandler.load_ush_data()
     K = datahandler.K
     print "No. report types = %i" % K
@@ -191,6 +195,44 @@ if __name__ == '__main__':
     # containers for results
     results = {}
     
+    # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
+    
+    # get values for training points by taking frequencies
+    counts_pos = coo_matrix(((C[:,3]==1).astype(float), (C[:,1], C[:,2])), (nx,ny))
+    counts_neg = coo_matrix(((C[:,3]==0).astype(float), (C[:,1], C[:,2])), (nx,ny))
+    density_estimates = counts_pos / (counts_pos + counts_neg)
+    
+    observed_idxs = ((counts_pos+counts_neg)>0).toarray()
+    E_t_pos = density_estimates[observed_idxs]
+    observed_points = np.zeros(E_t_pos.size)
+    observed_points[:] = E_t_pos
+        
+    #run GP
+    gp_training_labels = np.zeros((nx,ny)) - 1 # blanks
+    gp_training_labels[observed_idxs] = observed_points 
+    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
+    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    
+    results['Train_GP_on_Freq'] = bcc_pred
+    
+    # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
+    
+    # reuse values for training points given by frequencies
+    #kernels and sum. Iterate and try to minimise L2 risk to select kernel bandwidth (mean integrated squared error). 
+    # This is given by: expected difference between kernel function evaluated at a point and the true value. Can look at
+    # this for the training points only, but this would cause overfitting. Alternatively, can use cross-validation.
+    # Matlab kdensity. In python, see:
+    # http://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
+    x_idxs, y_idxs = np.mgrid[0:nx, 0:ny]
+    grid_idxs = np.vstack((x_idxs.ravel(), y_idxs.ravel()))
+    inputdata = np.vstack((C[:,1], C[:,2]))
+    logging.info("Running KDE...")
+    kde = gaussian_kde(inputdata)
+    preds = kde.evaluate(grid_idxs)
+    results['KDE'] = preds
+    logging.info("KDE complete.")
+        
     # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
     combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
     combiner.minNoIts = 5
@@ -210,55 +252,24 @@ if __name__ == '__main__':
     combiner.minNoIts = 5
     combiner.maxNoIts = 200
     combiner.convThreshold = 0.1
-
-    bcc_pred = combiner.combine_classifications(C)
+    
+    #flatten the input data so it can be used with standard IBCC
+    crowdx = C[:,1].astype(int)
+    crowdy = C[:,2].astype(int)        
+    linearIdxs = np.ravel_multi_index((crowdx, crowdy), dims=(nx,ny))
+    C_flat = C[:,[0,1,3]]
+    C_flat[:,1] = linearIdxs
+    bcc_pred = combiner.combine_classifications(C_flat)
 
     # use IBCC output to train GP
-    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
-    combiner.minNoIts = 1
-    combiner.maxNoIts = 1
-    combiner.E_t = bcc_pred
-    bcc_pred = combiner.combine_classifications(C)
-    
+    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    gp_training_labels = np.zeros((nx,ny)) - 1 # blanks
+    gp_training_labels[C[:,1],C[:,2]] = bcc_pred[linearIdxs,1] 
+    bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
     bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
     
     results['IBCC_then_GP'] = bcc_pred
     
-    # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
-    
-    # get values for training points by taking frequencies
-    counts_pos = coo_matrix((C[:,3]==1, (C[:,1], C[:,2])), (nx,ny))
-    counts_neg = coo_matrix((C[:,3]==0, (C[:,1], C[:,2])), (nx,ny))
-    density_estimates = counts_pos / (counts_pos + counts_neg)
-    
-    E_t_pos = density_estimates[(counts_pos+counts_neg)>0]
-    E_t_pos = E_t_pos.reshape((E_t_pos.size,1))
-    E_t_neg = 1-E_t_pos
-        
-    #run GP
-    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
-    combiner.minNoIts = 1
-    combiner.maxNoIts = 1
-    combiner.E_t = np.concatenate((E_t_pos, E_t_neg), axis=0)
-    bcc_pred = combiner.combine_classifications(C)
-    
-    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
-    
-    results['Train_GP_on_Freq'] = bcc_pred
-    
-    # PUT KERNELS AROUND THE OBSERVATION POINTS   ----------------------------------------------------------------------
-    
-    # get values for training points by taking frequencies
-    counts_pos = coo_matrix((C[:,3]==1, (C[:,1], C[:,2])), (nx,ny))
-    counts_neg = coo_matrix((C[:,3]==0, (C[:,1], C[:,2])), (nx,ny))
-    density_estimates = counts_pos / (counts_pos + counts_neg)
-    
-    E_t_pos = density_estimates[(counts_pos+counts_neg)>0]
-    E_t_pos = E_t_pos.reshape((E_t_pos.size,1))
-    E_t_neg = 1-E_t_pos
-        
-    #kernels and sum. Iterate and try to maximise posterior probability to learn the kernel parameters.
-        
     # EVALUATE ALL RESULTS ---------------------------------------------------------------------------------------------
     evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
     
