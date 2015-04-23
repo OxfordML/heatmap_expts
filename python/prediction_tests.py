@@ -70,51 +70,62 @@ class UshahidiDataHandler(object):
         for i, reptypetext in enumerate(reptypedata):        
             typetoks = reptypetext.split('.')
             typetoks = typetoks[0].split(',')
-            
-            if "1a." in reptypetext:
+            maintype = 1
+            if "1a." in reptypetext: # Trapped people
                 agentID = 0
-                maintype = 1
-            elif "1b." in reptypetext:
+            elif "1b." in reptypetext: 
                 agentID = 1
-                maintype = 1
             elif "1c." in reptypetext:
                 agentID = 2
-                maintype = 1
-            elif "1d." in reptypetext:
+            elif "1" in reptypetext or "1d." in reptypetext:
                 agentID = 3
-                maintype = 1
-            elif "3a." in reptypetext:
+            elif "2a." in reptypetext:
                 agentID = 4
-                maintype = 1
-            elif "3b." in reptypetext:
+            elif "2b." in reptypetext:
                 agentID = 5
-                maintype = 1
-            elif "3c." in reptypetext:
+            elif "2c." in reptypetext:
                 agentID = 6
-                maintype = 1
-            elif "3d." in reptypetext:
+            elif "2d." in reptypetext:
                 agentID = 7
-                maintype = 1
-            elif "3e." in reptypetext:
+            elif "2e." in reptypetext:
                 agentID = 8
-                maintype = 1
-            elif "5a." in reptypetext:
+            elif "2f." in reptypetext:
                 agentID = 9
-                maintype = 1
-            elif "6a." in reptypetext:
-                agentID = 10
-                maintype = 1
-            elif "6b." in reptypetext:
+            elif "2g." in reptypetext:
+                agentID = 10              
+            elif "3a." in reptypetext:
                 agentID = 11
-                maintype = 1
-            elif "1." in reptypetext:
+            elif "3." in reptypetext or "3b." in reptypetext or "3c." in reptypetext or "3d." in reptypetext or \
+                "3e." in reptypetext  or "6b." in reptypetext:
                 agentID = 12
-                maintype = 1
-            elif "3." in reptypetext:
+            elif "4a." in reptypetext:
                 agentID = 13
-                maintype = 1  
-            else: #we don't care about these categories in the demo anyway, but can add them easily here
+            elif "4." in reptypetext or "4b." in reptypetext:
                 agentID = 14
+            elif "5a." in reptypetext:
+                agentID = 15
+            elif "5." in reptypetext or "5c." in reptypetext or "5d." in reptypetext:
+                agentID = 16
+            elif "6." in reptypetext or "6a." in reptypetext:
+                agentID = 17
+            elif "7a." in reptypetext:
+                agentID = 18     
+            elif "7b." in reptypetext:
+                agentID = 19
+            elif "7c." in reptypetext:
+                agentID = 20
+            elif "7." in reptypetext or "7d." in reptypetext or "7e." in reptypetext or "7f." in reptypetext:
+                agentID = 21
+            elif "8a." in reptypetext:
+                agentID = 22
+            elif "8b." in reptypetext or "6c." in reptypetext or "6d." in reptypetext:
+                agentID = 23
+            elif "8c." in reptypetext:
+                agentID = 24
+            elif "8e." in reptypetext or "8." in reptypetext or  "8d." in reptypetext or "8f." in reptypetext:
+                agentID = 25                
+            else: #we don't care about these categories in the demo anyway, but can add them easily here
+                agentID = 26
                 for typestring in typetoks:
                     if len(typestring)>1:
                         sectype = typestring[1] # second character should be a letter is available
@@ -186,11 +197,18 @@ if __name__ == '__main__':
     datahandler.load_ush_data()
     K = datahandler.K
     print "No. report types = %i" % K
+    # Need to see how the methods vary with number of messages, i.e. when the messages come in according to the real
+    # time line. Can IBCC do better early on?
     C = datahandler.C[1]
     
     # default hyperparameters
-    alpha0 = np.array([[2.0, 1.0], [1.0, 2.0]])
-    nu0 = np.array([5,1])    
+    alpha0 = np.array([[1.1, 1.0], [1.0, 1.1]])[:,:,np.newaxis]
+    alpha0 = np.tile(alpha0, (1,1,K))
+    # set stronger priors for more meaningful categories
+    alpha0[:,:,range(0,4)] = np.array([[2.0,1.0],[1.0,2.0]])[:,:,np.newaxis]
+    alpha0[:,:,range(15,18)] = np.array([[2.0,1.0],[1.0,2.0]])[:,:,np.newaxis]
+    # set an uninformative prior over the spatial GP
+    nu0 = np.array([1,1])    
     
     # containers for results
     results = {}
@@ -235,9 +253,9 @@ if __name__ == '__main__':
         
     # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
     combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
-    combiner.minNoIts = 5
-    combiner.maxNoIts = 200
-    combiner.convThreshold = 0.1
+    combiner.min_iterations = 5
+    combiner.max_iterations = 200
+    combiner.conv_threshold = 0.1
 
     # Need to replace with optimised version!
     bcc_pred = combiner.combine_classifications(C)
@@ -249,9 +267,9 @@ if __name__ == '__main__':
     
     # run standard IBCC
     combiner = IBCC(2, 2, alpha0, nu0, K)
-    combiner.minNoIts = 5
-    combiner.maxNoIts = 200
-    combiner.convThreshold = 0.1
+    combiner.min_iterations = 5
+    combiner.max_iterations = 200
+    combiner.conv_threshold = 0.1
     
     #flatten the input data so it can be used with standard IBCC
     crowdx = C[:,1].astype(int)
@@ -279,7 +297,7 @@ if __name__ == '__main__':
         testresults = pred.flatten()
         labels = tgrid.flatten()
         acc = np.sum(np.round(testresults)==labels) / float(len(labels))
-        print acc  
+        print "accuracy: %.4f" % acc  
     
         defaultval = nu0[1] / float(np.sum(nu0))
         labels_nondef = labels[testresults!=defaultval] # labels where we have made a non-default prediction
@@ -292,8 +310,8 @@ if __name__ == '__main__':
         npos_def = np.sum(labels==1) - np.sum(labels_nondef==1)    
         mce += mce_def*npos_def
         # Make this the cross entropy per data point
-        mce = mce/len(labels)
-        print str(mce)
+        mce = mce/float(len(labels))
+        print "cross entropy: %.4f" % mce 
         
         auc,ap = evaluator.eval_auc(testresults,labels)
-        print str(auc)
+        print "AUC: %.4f" % auc
