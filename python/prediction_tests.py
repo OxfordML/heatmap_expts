@@ -188,8 +188,14 @@ if __name__ == '__main__':
     #Load up some ground truth
 #     goldfile = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_182_188_726_720_100_100.csv"
 #     tgrid = np.genfromtxt(goldfile).astype(int)
-    goldfile = "./data/haiti_unosat_target2.npy"
-    tgrid = np.load(goldfile).astype(int)    
+    goldfile = "./data/haiti_unosat_target3.npy"
+    targets = np.load(goldfile).astype(int)
+    
+    tsubset = range(100)
+    
+    targetsx = targets[tsubset,0]
+    targetsy = targets[tsubset,1]
+    labels = targets[tsubset,2]  
     
     nx = 1000
     ny = 1000
@@ -228,7 +234,7 @@ if __name__ == '__main__':
     #run GP
     gp_training_labels = np.zeros((nx,ny)) - 1 # blanks
     gp_training_labels[observed_idxs] = observed_points 
-    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
     bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
     bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
     
@@ -252,7 +258,7 @@ if __name__ == '__main__':
     logging.info("KDE complete.")
         
     # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
-    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
     combiner.min_iterations = 5
     combiner.max_iterations = 200
     combiner.conv_threshold = 0.1
@@ -280,7 +286,7 @@ if __name__ == '__main__':
     bcc_pred = combiner.combine_classifications(C_flat)
 
     # use IBCC output to train GP
-    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, calc_full_grid=True)
+    gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
     gp_training_labels = np.zeros((nx,ny)) - 1 # blanks
     gp_training_labels[C[:,1],C[:,2]] = bcc_pred[linearIdxs,1] 
     bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
@@ -295,7 +301,6 @@ if __name__ == '__main__':
         print "Results for %s" % method
         pred = results[method]
         testresults = pred.flatten()
-        labels = tgrid.flatten()
         acc = np.sum(np.round(testresults)==labels) / float(len(labels))
         print "accuracy: %.4f" % acc  
     

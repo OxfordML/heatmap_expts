@@ -25,12 +25,15 @@ gridsizex = (maxlat - minlat) / nx
 gridsizey = (maxlon - minlon) / ny
 
 tgrid = np.zeros((nx,ny),dtype=np.float) # grid of target values starting from 0
+
 #Treat 0 as default if no shape with another attribute is found in that square.
 
 inputfname = "/home/edwin/Datasets/haiti_unosat/HTI_2010_shp/PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2"
-outfname_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.csv"
-outfname_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.npy"
-    
+outfname_grid_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.csv"
+outfname_grid_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.npy"
+outfname_list_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target3.csv"
+outfname_list_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target3.npy"  
+
 utm_to_lonlat = Proj("+init=EPSG:32618")    
     
 def loadshapes():
@@ -59,7 +62,7 @@ def loadshapes():
     print "Shapes have been loaded. Now converting to gold-labelled grid."
     return shapes
 
-def createtargets(shapes):
+def create_target_grid(shapes):
     for shape in shapes:
         process_shape(shape)
         
@@ -67,12 +70,13 @@ def point_to_grid(x,y):
     lon,lat = utm_to_lonlat(x, y, inverse=True)
     x = math.floor((lat-minlat) / gridsizex)
     y = math.floor((lon-minlon) / gridsizey) 
-    return x,y    
+    return x,y 
 
-def findgridsquares(shape):
-    #Shapes in this data set have actually got only one point
-    x,y = point_to_grid(shape.points[0][0], shape.points[0][1])
-    return [x],[y]
+def point_to_local_coords(x,y):
+    lon,lat = utm_to_lonlat(x, y, inverse=True)
+    x = math.floor((lat-minlat) / gridsizex)
+    y = math.floor((lon-minlon) / gridsizey) 
+    return x,y   
         
 def process_shape(shape):
     t = shape.att    
@@ -82,24 +86,46 @@ def process_shape(shape):
     if t==0:
         #default class, lowest value, so can't override anything.
         return
-    xlist, ylist = findgridsquares(shape)
-    for i in range(len(xlist)):
-        x = xlist[i]
-        y = ylist[i]
+    x,y = point_to_grid(shape.points[0][0], shape.points[0][1])
+    if x<0 or x>nx or y<0 or y>ny:
+        return
+    if tgrid[x,y] < t:
+        tgrid[x,y] = t
+        print str(x)
+        print str(y)
+
+def create_target_list(shapes):
+    '''
+    Extract a list of coordinates and class values for the damaged buildings.
+    '''
+    targets = np.zeros((len(shapes),3))
+    nshapes = 0
+    for shape in shapes:
+        x,y = point_to_grid(shape.points[0][0], shape.points[0][1])
         if x<0 or x>nx or y<0 or y>ny:
             continue
-        if tgrid[x,y] < t:
-            tgrid[x,y] = t
-            print str(x)
-            print str(y)
+        targets[nshapes,0] = x
+        targets[nshapes,1] = y
+        targets[nshapes,2] = shape.att
+        nshapes += 1
+        print str(nshapes)
+    return targets
 
 if __name__ == '__main__':
     print("Read in a shapefile, and match the attributes to grid locations.")
     
     shapes = loadshapes()
-    createtargets(shapes)
     
+    # Save the building locations only, rather than all points in a grid
+    targets = create_target_list(shapes)
     print "Saving to numpy binary file."
-    np.save(outfname_npy, tgrid)
+    np.save(outfname_list_npy, targets)
     print "Saving to CSV text file."
-    np.savetxt(outfname_csv, tgrid, delimiter=',', fmt='%i')
+    np.savetxt(outfname_list_csv, targets, delimiter=',', fmt='%f')    
+    
+    # Create a grid
+    create_target_grid(shapes)
+    print "Saving to numpy binary file."
+    np.save(outfname_grid_npy, tgrid)
+    print "Saving to CSV text file."
+    np.savetxt(outfname_grid_csv, tgrid, delimiter=',', fmt='%i')
