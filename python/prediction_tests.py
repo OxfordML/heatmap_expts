@@ -240,7 +240,7 @@ if __name__ == '__main__':
     gp_training_labels[observed_idxs] = observed_points 
     gpcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
     bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
-    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    bcc_pred = bcc_pred[1,:] # only interested in positive "damage class"
     
     results['Train_GP_on_Freq'] = bcc_pred
     
@@ -269,7 +269,7 @@ if __name__ == '__main__':
 
     # Need to replace with optimised version!
     bcc_pred = combiner.combine_classifications(C)
-    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    bcc_pred = bcc_pred[1,:] # only interested in positive "damage class"
     
     results['heatmapbcc'] = bcc_pred
     
@@ -294,7 +294,7 @@ if __name__ == '__main__':
     gp_training_labels = np.zeros((nx,ny)) - 1 # blanks
     gp_training_labels[C[:,1],C[:,2]] = bcc_pred[linearIdxs,1] 
     bcc_pred = gpcombiner.combine_classifications(C, goldlabels=gp_training_labels, testidxs=np.ones(nx*ny).astype(int))
-    bcc_pred = bcc_pred[1,:,:].reshape((nx,ny)) # only interested in positive "damage class"
+    bcc_pred = bcc_pred[1,:] # only interested in positive "damage class"
     
     results['IBCC_then_GP'] = bcc_pred
     
