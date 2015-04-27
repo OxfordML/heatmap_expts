@@ -191,22 +191,19 @@ if __name__ == '__main__':
     goldfile = "./data/haiti_unosat_target3.npy"
     targets = np.load(goldfile).astype(int)
     
-    tsubset = range(100)
-    
-    targetsx = targets[tsubset,0]
-    targetsy = targets[tsubset,1]
-    labels = targets[tsubset,2]  
+    targetsx = targets[:,0]
+    targetsy = targets[:,1]
+    labels = targets[:,2]  
     
     nx = 1000
     ny = 1000
     datahandler = UshahidiDataHandler(nx,ny, './data/')
     datahandler.load_ush_data()
-    K = datahandler.K
-    print "No. report types = %i" % K
     # Need to see how the methods vary with number of messages, i.e. when the messages come in according to the real
     # time line. Can IBCC do better early on?
     C = datahandler.C[1]
     
+    K = datahandler.K
     # default hyperparameters
     alpha0 = np.array([[1.1, 1.0], [1.0, 1.1]])[:,:,np.newaxis]
     alpha0 = np.tile(alpha0, (1,1,K))
@@ -215,6 +212,13 @@ if __name__ == '__main__':
     alpha0[:,:,range(15,18)] = np.array([[2.0,1.0],[1.0,2.0]])[:,:,np.newaxis]
     # set an uninformative prior over the spatial GP
     nu0 = np.array([1,1])    
+    
+#     #subset for testing
+#     C = C[1:100,:]
+#     alpha0 = alpha0[:, :, np.sort(np.unique(C[:,0]))]
+#     K = len(np.unique(C[:,0]))
+    
+    print "No. report types = %i" % K
     
     # containers for results
     results = {}
