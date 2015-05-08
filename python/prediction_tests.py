@@ -71,7 +71,7 @@ if __name__ == '__main__':
     nlabels = 250
     # increment the number of labels at each iteration
     stepsize = 250
-    while nlabels <= 250:#navailable:
+    while nlabels <= navailable:
         C = C_all[0:nlabels, :]
         agents = np.unique(C[:,0])
         K = len(agents)
@@ -101,59 +101,60 @@ if __name__ == '__main__':
         obsx = obs_coords[:, 0]
         obsy = obs_coords[:, 1]                  
                  
-#         # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
-#          
-#         # reuse values for training points given by frequencies
-#         #kernels and sum. Iterate and try to minimise L2 risk to select kernel bandwidth (mean integrated squared error). 
-#         # This is given by: expected difference between kernel function evaluated at a point and the true value. Can look at
-#         # this for the training points only, but this would cause overfitting. Alternatively, can use cross-validation.
-#         # Matlab kdensity. In python, see:
-#         # http://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
-#         #x_idxs, y_idxs = np.mgrid[0:nx, 0:ny]
-#         grid_idxs = np.vstack((targetsx,targetsy))#(x_idxs.ravel(), y_idxs.ravel()))
-#         posinputdata = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
-#         neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
-#         logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
-#         kdepos = gaussian_kde(posinputdata)
-#         if neginputdata.shape[1] != 0:
-#             kdeneg = gaussian_kde(neginputdata)
-#         #else:
-#             # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
-#             # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
-#         grid_lower = np.vstack((targetsx - 0.5, targetsy - 0.5))
-#         grid_upper = np.vstack((targetsx + 0.5, targetsy + 0.5))
-#         p_loc_giv_damage = np.zeros(len(targetsx))
-#         p_loc_giv_nodamage = np.zeros(len(targetsx))
-#         for i in range(len(targetsx)):
-#             if i%1000 == 0:
-#                 logging.debug("Processing %i of %i" % (i,len(targetsx)))
-#             p_loc_giv_damage[i] = kdepos.integrate_box(grid_lower[:, i], grid_upper[:, i])
-#             if neginputdata.shape[1] != 0:
-#                 p_loc_giv_nodamage[i] = kdeneg.integrate_box(grid_lower[:, i], grid_upper[:, i])
-#             else:
-#                 p_loc_giv_nodamage[i] = 1.0 / (nx*ny)
-#         p_damage = nu0[1] / np.sum(nu0)
-#         p_damage_loc = p_loc_giv_damage * p_damage
-#         p_nodamage_loc = p_loc_giv_nodamage * (1.0-p_damage)
-#         p_damage_giv_loc  = p_damage_loc / (p_damage_loc + p_nodamage_loc)
-#         results['KDE'] = p_damage_giv_loc
-#         logging.info("KDE complete.")
-#         
-#         # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
-#         
-#         # get values for training points by taking frequencies
-#         density_estimates = counts_pos / (obs_grid)
-#         density_estimates = np.array(density_estimates[obsx, obsy]).flatten()
-#         #run GP
-#         gpgrid = GPGrid(nx, ny)
-#         gpgrid.fit([obsx, obsy], density_estimates)
-#         gp_preds = gpgrid.predict([targetsx, targetsy])
-#         results['Train_GP_on_Freq'] = gp_preds        
-#         
+        # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
+          
+        # reuse values for training points given by frequencies
+        #kernels and sum. Iterate and try to minimise L2 risk to select kernel bandwidth (mean integrated squared error). 
+        # This is given by: expected difference between kernel function evaluated at a point and the true value. Can look at
+        # this for the training points only, but this would cause overfitting. Alternatively, can use cross-validation.
+        # Matlab kdensity. In python, see:
+        # http://jakevdp.github.io/blog/2013/12/01/kernel-density-estimation/
+        #x_idxs, y_idxs = np.mgrid[0:nx, 0:ny]
+        grid_idxs = np.vstack((targetsx,targetsy))#(x_idxs.ravel(), y_idxs.ravel()))
+        posinputdata = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
+        neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
+        logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
+        kdepos = gaussian_kde(posinputdata)
+        if neginputdata.shape[1] != 0:
+            kdeneg = gaussian_kde(neginputdata)
+        #else:
+            # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
+            # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
+        grid_lower = np.vstack((targetsx - 0.5, targetsy - 0.5))
+        grid_upper = np.vstack((targetsx + 0.5, targetsy + 0.5))
+        p_loc_giv_damage = np.zeros(len(targetsx))
+        p_loc_giv_nodamage = np.zeros(len(targetsx))
+        for i in range(len(targetsx)):
+            if i%1000 == 0:
+                logging.debug("Processing %i of %i" % (i,len(targetsx)))
+            p_loc_giv_damage[i] = kdepos.integrate_box(grid_lower[:, i], grid_upper[:, i])
+            if neginputdata.shape[1] != 0:
+                p_loc_giv_nodamage[i] = kdeneg.integrate_box(grid_lower[:, i], grid_upper[:, i])
+            else:
+                p_loc_giv_nodamage[i] = 1.0 / (nx*ny)
+        p_damage = nu0[1] / np.sum(nu0)
+        p_damage_loc = p_loc_giv_damage * p_damage
+        p_nodamage_loc = p_loc_giv_nodamage * (1.0-p_damage)
+        p_damage_giv_loc  = p_damage_loc / (p_damage_loc + p_nodamage_loc)
+        results['KDE'] = p_damage_giv_loc
+        logging.info("KDE complete.")
+         
+        # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
+         
+        # get values for training points by taking frequencies
+        density_estimates = counts_pos / (obs_grid)
+        density_estimates = np.array(density_estimates[obsx, obsy]).flatten()
+        #run GP
+        gpgrid = GPGrid(nx, ny, s=4, ls=4, nu0=[200,200])
+        gpgrid.optimize([obsx, obsy], density_estimates)
+        gp_preds = gpgrid.predict([targetsx, targetsy])
+        results['Train_GP_on_Freq'] = gp_preds        
+         
         # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
            
         # run standard IBCC
         combiner = IBCC(2, 2, alpha0, nu0, K)
+        combiner.verbose = False
         combiner.min_iterations = 5
         combiner.max_iterations = 200
         combiner.conv_threshold = 0.1
@@ -166,23 +167,23 @@ if __name__ == '__main__':
         bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(nx,ny)), 1]    
        
         # use IBCC output to train GP
-        gpgrid = GPGrid(nx, ny)
-        gpgrid.fit([obsx, obsy], bcc_pred)
+        gpgrid = GPGrid(nx, ny, s=4, ls=4, nu0=[200,200])
+        gpgrid.optimize([obsx, obsy], bcc_pred)
         gp_preds = gpgrid.predict([targetsx, targetsy])
            
         results['IBCC_then_GP'] = gp_preds        
              
-#         # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
-#         combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
-#         combiner.min_iterations = 5
-#         combiner.max_iterations = 200
-#         combiner.conv_threshold = 0.1
-#      
-#         # Need to replace with optimised version!
-#         bcc_pred = combiner.combine_classifications(C, optimise_hyperparams=True)
-#         bcc_pred = bcc_pred[1,:] # only interested in positive "damage class"
-#          
-#         results['heatmapbcc'] = bcc_pred
+        # RUN HEATMAP BCC --------------------------------------------------------------------------------------------------
+        combiner = HeatMapBCC(nx, ny, 2, 2, alpha0, nu0, K, force_update_all_points=True, outputx=targetsx, outputy=targetsy)
+        combiner.min_iterations = 5
+        combiner.max_iterations = 200
+        combiner.conv_threshold = 0.1
+      
+        # Need to replace with optimised version!
+        bcc_pred = combiner.combine_classifications(C, optimise_hyperparams=True)
+        bcc_pred = bcc_pred[1,:] # only interested in positive "damage class"
+          
+        results['heatmapbcc'] = bcc_pred
                 
         # EVALUATE ALL RESULTS ---------------------------------------------------------------------------------------------
         evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
@@ -191,11 +192,11 @@ if __name__ == '__main__':
             print "Results for %s" % method
             pred = results[method]
             testresults = pred.flatten()
-            acc = np.sum(np.round(testresults)==labels) / float(len(labels))
-            print "accuracy: %.4f" % acc  
-            mce = evaluator.eval_crossentropy(testresults, labels) 
+            mce = evaluator.eval_crossentropy(testresults, labels)
             print "cross entropy: %.4f" % mce 
-            auc,ap = evaluator.eval_auc(testresults,labels)
+            acc = np.sum(np.round(testresults)==labels) / float(len(labels))            
+            print "accuracy: %.4f" % acc  
+            auc,ap = evaluator.eval_auc(testresults,labels) 
             print "AUC: %.4f" % auc
             if method not in auc_all:
                 auc_all[method] = [auc]
