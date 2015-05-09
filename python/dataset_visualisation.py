@@ -27,7 +27,7 @@ plt.show()
 
 # Plot the reports
 dh = UDH(1000, 1000, './data/')
-dh.load_ush_data()
+dh.load_data()
 C = dh.C[1]
 C = C[0:200, :]
 

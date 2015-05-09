@@ -45,7 +45,7 @@ class UshahidiDataHandler(object):
             
         return latdata,londata           
     
-    def load_ush_data(self):
+    def load_data(self):
         dataFile = self.datadir+'/exported_ushahidi.csv'
         self.K = 1
         #load the data
@@ -54,11 +54,7 @@ class UshahidiDataHandler(object):
         latdata = np.genfromtxt(dataFile, np.float64, delimiter=',', skip_header=True, usecols=[4])
         londata = np.genfromtxt(dataFile, np.float64, delimiter=',', skip_header=True, usecols=[5])
         reptypedata = np.genfromtxt(dataFile, np.str, delimiter=',', skip_header=True, usecols=[1])
-        rep_list_all = np.genfromtxt(dataFile, np.str, delimiter=',', skip_header=True, usecols=[6])
         latdata,londata = self.translate_points_to_local(latdata,londata)
-        rep_id_grid = {}
-
-        rep_list = {}
         C = {}            
         instantiatedagents = []
 
@@ -151,16 +147,9 @@ class UshahidiDataHandler(object):
 
             if C=={} or maintype not in C:
                 C[maintype] = Crow.reshape((1,4))
-                rep_id_grid[maintype] = np.empty((self.nx, self.ny), dtype=np.object)
-                rep_list[maintype] = [rep_list_all[i]]
             else:
                 C[maintype] = np.concatenate((C[maintype], Crow.reshape(1,4)), axis=0)
-                rep_list[maintype].append(rep_list_all[i])
                 
-            if rep_id_grid[maintype][repx, repy] == None:
-                rep_id_grid[maintype][repx, repy] = []
-            rep_id_grid[maintype][repx, repy].append(len(rep_list[maintype])-1)               
-            
             if agentID not in instantiatedagents:
                 instantiatedagents.append(agentID)
                 

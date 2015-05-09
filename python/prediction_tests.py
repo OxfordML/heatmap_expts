@@ -37,7 +37,7 @@ if __name__ == '__main__':
     nx = 1000
     ny = 1000
     datahandler = UshahidiDataHandler(nx,ny, './data/')
-    datahandler.load_ush_data()
+    datahandler.load_data()
     # Need to see how the methods vary with number of messages, i.e. when the messages come in according to the real
     # time line. Can IBCC do better early on?
     C = datahandler.C[1]
