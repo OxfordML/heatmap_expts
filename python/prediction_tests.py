@@ -2,6 +2,14 @@
 Created on 8 Jan 2015
 
 @author: edwin
+
+
+Notes/TO DO:
+
+See if the data points have been extracted correctly. We currently have 294170 test points, which is too many -- let's 
+run this one 5 different sub-samples if this is the correct number. Make sure we are using the original house locations,
+not the discrete grid values.
+
 '''
 
 import logging
