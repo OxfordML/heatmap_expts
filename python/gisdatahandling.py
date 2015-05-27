@@ -21,6 +21,8 @@ maxlon = -72.0#-71.7
 nx = 1000
 ny = 1000
 
+discrete=False
+
 gridsizex = (maxlat - minlat) / nx
 gridsizey = (maxlon - minlon) / ny
 
@@ -29,10 +31,10 @@ tgrid = np.zeros((nx,ny),dtype=np.float) # grid of target values starting from 0
 #Treat 0 as default if no shape with another attribute is found in that square.
 
 inputfname = "/home/edwin/Datasets/haiti_unosat/HTI_2010_shp/PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2"
-outfname_grid_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.csv"
-outfname_grid_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target2.npy"
-outfname_list_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target3.csv"
-outfname_list_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target3.npy"  
+outfname_grid_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_grid.csv"
+outfname_grid_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_grid.npy"
+outfname_list_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_list.csv"
+outfname_list_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_list.npy"  
 
 utm_to_lonlat = Proj("+init=EPSG:32618")    
     
@@ -68,14 +70,21 @@ def create_target_grid(shapes):
         
 def point_to_grid(x,y):
     lon,lat = utm_to_lonlat(x, y, inverse=True)
-    x = math.floor((lat-minlat) / gridsizex)
-    y = math.floor((lon-minlon) / gridsizey) 
+    x = (lat-minlat) / gridsizex
+    y = (lon-minlon) / gridsizey
+    if discrete:
+        x = math.floor(x)
+        y = math.floor(y) 
     return x,y 
 
 def point_to_local_coords(x,y):
     lon,lat = utm_to_lonlat(x, y, inverse=True)
-    x = math.floor((lat-minlat) / gridsizex)
-    y = math.floor((lon-minlon) / gridsizey) 
+    x = (lat-minlat) / gridsizex
+    y = (lon-minlon) / gridsizey
+    if discrete:
+        x = math.floor(x)
+        y = math.floor(y)
+
     return x,y   
         
 def process_shape(shape):
@@ -111,6 +120,23 @@ def create_target_list(shapes):
         print str(nshapes)
     return targets
 
+def unique_targets(targets):
+    '''
+    Remove any duplicated target areas; choose highest value attribute.
+    '''
+    utargets = targets.copy()
+    for i, t in enumerate(targets):
+        x = t[0]
+        xt = targets[:, 0]==x
+        y = t[1]
+        dupes = targets[xt, 1]==y
+        dupeidxs = np.argwhere(xt)[dupes]
+        utargets[dupeidxs, 2] = -1
+        utargets[i, 2] = np.max(targets[dupeidxs, 2])
+        print i
+    utargets = np.delete(utargets, utargets[:,2]<0, 0)
+    return utargets 
+
 if __name__ == '__main__':
     print("Read in a shapefile, and match the attributes to grid locations.")
     
@@ -118,10 +144,11 @@ if __name__ == '__main__':
     
     # Save the building locations only, rather than all points in a grid
     targets = create_target_list(shapes)
+    utargets = unique_targets(targets)
     print "Saving to numpy binary file."
-    np.save(outfname_list_npy, targets)
+    np.save(outfname_list_npy, utargets)
     print "Saving to CSV text file."
-    np.savetxt(outfname_list_csv, targets, delimiter=',', fmt='%f')    
+    np.savetxt(outfname_list_csv, utargets, delimiter=',', fmt='%f')    
     
     # Create a grid
     create_target_grid(shapes)

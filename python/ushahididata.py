@@ -26,6 +26,8 @@ class UshahidiDataHandler(object):
     #to class IDs, using original categories as keys:
     categorymap = {1:1, 3:1,5:{'a':1},6:{'a':1,'b':1}} 
     
+    discrete = True
+    
     def __init__(self, nx, ny, datadir):
         self.nx = nx
         self.ny = ny
@@ -40,8 +42,12 @@ class UshahidiDataHandler(object):
         normlatdata = (latdata-self.minlat)/(self.maxlat-self.minlat)
         normlondata = (londata-self.minlon)/(self.maxlon-self.minlon)    
             
-        latdata = np.array(np.round(normlatdata*self.nx), dtype=np.int)
-        londata = np.array(np.round(normlondata*self.ny), dtype=np.int)
+        if self.discrete:
+            latdata = np.array(np.round(normlatdata*self.nx), dtype=np.int)
+            londata = np.array(np.round(normlondata*self.ny), dtype=np.int)
+        else:
+            latdata = np.array(normlatdata*self.nx)
+            londata = np.array(normlondata*self.ny)
             
         return latdata,londata           
     
