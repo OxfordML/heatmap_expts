@@ -51,7 +51,7 @@ if __name__ == '__main__':
     # Need to see how the methods vary with number of messages, i.e. when the messages come in according to the real
     # time line. Can IBCC do better early on?
     C = datahandler.C[1]
-    C_all = C # save for later
+    C_all = C # save for later    
     
     K = datahandler.K
     # default hyperparameters
@@ -98,19 +98,19 @@ if __name__ == '__main__':
         negreports = (C[:,3]==0).astype(float)
         
         # Report coords for this round
-        reportsx = C[:, 1]#.astype(int)
-        reportsy = C[:, 2]#.astype(int) 
+        reportsx = C[:, 1]
+        reportsy = C[:, 2]
         
         # grid indicating where we made observations
-        #obs_grid = coo_matrix((np.ones(reportsx.shape[0]), (reportsx.astype(int), reportsy.astype(int))), (nx,ny))
+        obs_grid = coo_matrix((np.ones(reportsx.shape[0]), (reportsx.astype(int), reportsy.astype(int))), (nx,ny))
         #
         # Matrix of counts of reports at each location
-        #counts_pos = coo_matrix((posreports, (reportsx, reportsy)), (nx,ny))
-        #  
+        counts_pos = coo_matrix((posreports, (reportsx, reportsy)), (nx,ny))
+          
         # Coordinates where we made observations, i.e. without duplicates due to multiple reports at some points 
-        #obs_coords = np.argwhere(obs_grid.toarray()>0)
-        #obsx = obs_coords[:, 0]
-        #obsy = obs_coords[:, 1]                  
+        obs_coords = np.argwhere(obs_grid.toarray()>0)
+        obsx = obs_coords[:, 0]
+        obsy = obs_coords[:, 1]                  
                  
         # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
           
@@ -157,11 +157,12 @@ if __name__ == '__main__':
         # only one report at each location, so give 1 for positive reports, 0 otherwise
         # density_estimates = np.array(density_estimates[obsx, obsy]).flatten()
         #run GP
-        gpgrid = GPGrid(nx, ny, s=4, ls=100, nu0=[200,200])
+        # Why is data more likely with shorter length-scale?
+        gpgrid = GPGrid(nx, ny, ls=100, nu0=[1, 1], gam_shape_ls=1)
         gpgrid.verbose = True
         #         gpgrid.optimize([obsx, obsy], density_estimates)
         gpgrid.optimize([reportsx, reportsy], 
-                        np.concatenate((posreports[:,np.newaxis], (posreports+negreports)[:,np.newaxis]), axis=1))
+                        np.concatenate((posreports[:,np.newaxis]*0.8, (posreports+negreports)[:,np.newaxis]), axis=1))
         gp_preds = gpgrid.predict([targetsx, targetsy])
         results['Train_GP_on_Freq'] = gp_preds        
            
