@@ -1,8 +1,8 @@
-'''
+"""
 Created on 7 Jan 2015
 
 @author: edwin
-'''
+"""
 
 import numpy as np
 import shapefile
@@ -18,8 +18,8 @@ maxlat = 18.8#19.4
 minlon = -72.6#-73.1
 maxlon = -72.0#-71.7   
     
-nx = 1000
-ny = 1000
+nx = 100
+ny = 100
 
 discrete=False
 
@@ -27,6 +27,7 @@ gridsizex = (maxlat - minlat) / nx
 gridsizey = (maxlon - minlon) / ny
 
 tgrid = np.zeros((nx,ny),dtype=np.float) # grid of target values starting from 0
+tgrid_totals = np.zeros((nx, ny), dtype=np.int)
 
 #Treat 0 as default if no shape with another attribute is found in that square.
 
@@ -40,11 +41,11 @@ utm_to_lonlat = Proj("+init=EPSG:32618")
     
 def loadshapes():
     sf = shapefile.Reader(inputfname)
-    shapes = sf.shapes() # some kind of python object
+    shapes_objs = sf.shapes() # some kind of python object
     
-    print "number of shapes: " + str(len(shapes))
-    
-    for i, shape in enumerate(shapes):
+    print "number of shapes: " + str(len(shapes_objs))
+
+    for i, shape in enumerate(shapes_objs):
 #         shape.att = sf.record(i)[12][6]
         damagestr = sf.record(i)[12]
         att = [int(s) for s in damagestr.split() if s.isdigit()]
@@ -60,13 +61,15 @@ def loadshapes():
             
 #         if sf.record(i)[15] != 'Not yet field validated':
 #             print "Valildation: " + sf.record(i)[15]
-        shapes[i] = shape
+        shapes_objs[i] = shape
     print "Shapes have been loaded. Now converting to gold-labelled grid."
-    return shapes
+    return shapes_objs
 
-def create_target_grid(shapes):
-    for shape in shapes:
+def create_target_grid(shapes_objs):
+    for shape in shapes_objs:
         process_shape(shape)
+
+    tgrid[tgrid_totals>0] = tgrid[tgrid_totals>0] / tgrid_totals[tgrid_totals>0]
         
 def point_to_grid(x,y):
     lon,lat = utm_to_lonlat(x, y, inverse=True)
@@ -74,8 +77,9 @@ def point_to_grid(x,y):
     y = (lon-minlon) / gridsizey
     if discrete:
         x = math.floor(x)
-        y = math.floor(y) 
-    return x,y 
+        y = math.floor(y)
+
+    return x,y
 
 def point_to_local_coords(x,y):
     lon,lat = utm_to_lonlat(x, y, inverse=True)
@@ -92,50 +96,50 @@ def process_shape(shape):
     
     #Assume that there is a class precedence, so that if a grid square has multiple shapes,
     #the one with highest attribute class value will take precedence
-    if t==0:
+    if t == 0:
         #default class, lowest value, so can't override anything.
         return
-    x,y = point_to_grid(shape.points[0][0], shape.points[0][1])
-    if x<0 or x>nx or y<0 or y>ny:
+    x, y = point_to_grid(shape.points[0][0], shape.points[0][1])
+    if x < 0 or x > nx or y < 0 or y > ny:
         return
-    if tgrid[x,y] < t:
-        tgrid[x,y] = t
-        print str(x)
-        print str(y)
+    tgrid[x, y] += t
+    tgrid_totals[x, y] += 1
 
-def create_target_list(shapes):
-    '''
+def create_target_list(shape_objs):
+    """
     Extract a list of coordinates and class values for the damaged buildings.
-    '''
-    targets = np.zeros((len(shapes),3))
+    """
+    target_list = np.zeros((len(shape_objs),3))
     nshapes = 0
-    for shape in shapes:
+    for shape in shape_objs:
         x,y = point_to_grid(shape.points[0][0], shape.points[0][1])
         if x<0 or x>nx or y<0 or y>ny:
             continue
-        targets[nshapes,0] = x
-        targets[nshapes,1] = y
-        targets[nshapes,2] = shape.att
+        target_list[nshapes,0] = x
+        target_list[nshapes,1] = y
+        target_list[nshapes,2] = shape.att
         nshapes += 1
         print str(nshapes)
-    return targets
+    target_list = target_list[0:nshapes, :]
+    return target_list
 
-def unique_targets(targets):
-    '''
+def get_unique_targets(all_targets):
+    """
     Remove any duplicated target areas; choose highest value attribute.
-    '''
-    utargets = targets.copy()
-    for i, t in enumerate(targets):
+    """
+    print "number of targets: %i" % len(all_targets)
+    unique_targets = all_targets.copy()
+    for i, t in enumerate(all_targets):
         x = t[0]
-        xt = targets[:, 0]==x
         y = t[1]
-        dupes = targets[xt, 1]==y
-        dupeidxs = np.argwhere(xt)[dupes]
-        utargets[dupeidxs, 2] = -1
-        utargets[i, 2] = np.max(targets[dupeidxs, 2])
-        print i
-    utargets = np.delete(utargets, utargets[:,2]<0, 0)
-    return utargets 
+        dupeidxs = (all_targets[:, 0] == x) & (all_targets[:, 1] == y)
+        if np.sum(dupeidxs) > 1:
+            unique_targets[dupeidxs, 2] = -1
+            unique_targets[i, 2] = np.max(all_targets[dupeidxs, 2])
+            print "duplicate of %.3f, %.3f, with damage classes %s" % (x, y, str(all_targets[dupeidxs, 2]))
+    print "number of de-duplicated targets: %i" % len(unique_targets)
+    unique_targets = unique_targets[unique_targets[:,2]>=0, :]
+    return unique_targets
 
 if __name__ == '__main__':
     print("Read in a shapefile, and match the attributes to grid locations.")
@@ -144,7 +148,7 @@ if __name__ == '__main__':
     
     # Save the building locations only, rather than all points in a grid
     targets = create_target_list(shapes)
-    utargets = unique_targets(targets)
+    utargets = get_unique_targets(targets)
     print "Saving to numpy binary file."
     np.save(outfname_list_npy, utargets)
     print "Saving to CSV text file."
