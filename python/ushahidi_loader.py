@@ -12,9 +12,9 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.DEBUG)
 
     methods = [
-               #'KDE',
-               #'GP',
-               #'IBCC+GP',
+               'KDE',
+               'GP',
+               'IBCC+GP',
                'HeatmapBCC'
                ]
 
@@ -22,7 +22,8 @@ if __name__ == '__main__':
     #Load up some ground truth
 #     goldfile = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_182_188_726_720_100_100.csv"
 #     tgrid = np.genfromtxt(goldfile).astype(int)
-    goldfile = '/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_list.npy' #"./data/haiti_unosat_target3.npy"
+    datadir = './data/'# '/home/edwin/Datasets/haiti_unosat/'
+    goldfile = datadir + 'haiti_unosat_target_list.npy' #"./data/haiti_unosat_target3.npy"
     targets_all = np.load(goldfile)
 
     labels = {}
@@ -38,7 +39,7 @@ if __name__ == '__main__':
         targetsy[testsubset] = targets[:,1]
         labels[testsubset] = targets[:,2].astype(int)
 
-    goldfile_grid = '/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_grid.npy'
+    goldfile_grid = datadir + 'haiti_unosat_target_grid.npy'
     gold_density = np.load(goldfile_grid).astype(int)
 
     nx = 100
@@ -54,15 +55,15 @@ if __name__ == '__main__':
     K = datahandler.K
     # default hyper-parameters
     # default hyper-parameters
-    alpha0 = np.array([[2.0, 1.0], [1.0, 2.0]])[:,:,np.newaxis]
+    alpha0 = np.array([[3.0, 1.0], [1.0, 3.0]])[:,:,np.newaxis]
     alpha0 = np.tile(alpha0, (1,1,3))
     # set stronger priors for more meaningful categories
     alpha0[:,:,1] = np.array([[5.0,1.0],[1.0,5.0]]) # confident agents
-    alpha0[:,:,2] = np.array([[1.0,1.0],[1.0,1.0]]) # agents with no prior knowledge of correlations
+    alpha0[:,:,2] = np.array([[2.0,1.0],[1.0,2.0]]) # agents with no prior knowledge of correlations
     clusteridxs_all = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 2, 2, 2, 2, 0, 0, 2, 2])
     alpha0_all = alpha0
     # set an uninformative prior over the spatial GP
-    nu0 = np.array([5.0, 1.0])
+    nu0 = np.array([2.0, 1.0])
     z0 = nu0[1] / np.sum(nu0)
 #
 # #     #subset for testing
@@ -71,7 +72,7 @@ if __name__ == '__main__':
 #     K = len(np.unique(C[:,0]))
 
     # number of labels in first iteration dataset
-    nlabels = 2000
+    nlabels = 100
     # increment the number of labels at each iteration
     stepsize = 100
 
@@ -80,5 +81,6 @@ if __name__ == '__main__':
 
     # Run the tests with the current dataset
     outputdir = "./data/output/ush_"
-    prediction_tests.run_tests(K, C, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, labels, targetsx, targetsy,
-                               gold_density, navailable, nlabels, stepsize, outputdir, methods)
+    heatmapcombiner, gpgrid, gpgrid2, ibcc_combiner = prediction_tests.run_tests(K, C, nx, ny, z0, alpha0,
+                                                        clusteridxs_all, alpha0_all, nu0, labels, targetsx, targetsy,
+                                                        gold_density, navailable, nlabels, stepsize, outputdir, methods)

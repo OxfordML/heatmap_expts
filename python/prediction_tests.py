@@ -20,7 +20,7 @@ from ibcc import IBCC
 from gpgrid import GPGrid
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, kendalltau
-from scipy.optimize import fmin_cobyla
+from scipy.optimize import fmin#_cobyla,
 
 results_all = {}
 auc_all = {}
@@ -62,8 +62,8 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
     heatmapcombiner.verbose = False
 
     nout = nx * ny
-    gridoutputx = np.tile(np.arange(nx, dtype=np.float).reshape(nx, 1), (1, ny)).reshape(nout, 1)
-    gridoutputy = np.tile(np.arange(ny, dtype=np.float).reshape(1, ny), (nx, 1)).reshape(nout, 1)
+    gridoutputx = np.tile(np.arange(nx, dtype=np.float).reshape(nx, 1), (1, ny)).reshape(nout)
+    gridoutputy = np.tile(np.arange(ny, dtype=np.float).reshape(1, ny), (nx, 1)).reshape(nout)
 
     while nlabels <= navailable:
         C = C_all[0:nlabels, :]
@@ -163,8 +163,8 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             # noinspection PyTypeChecker
             def train_gp_on_ibcc_output(hyperparams):
                 logging.debug("fmin gridx and gridy values: %f, %f" % (hyperparams[0], hyperparams[1]))
-                opt_nx = np.round(hyperparams[0])
-                opt_ny = np.round(hyperparams[1])
+                opt_nx = int(hyperparams[0])
+                opt_ny = int(hyperparams[1])
                 if opt_nx < 0 or opt_ny < 0 or np.isnan(opt_nx) or np.isnan(opt_ny):
                     return np.inf
                 gpgrid2.nx = opt_nx
@@ -193,7 +193,9 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
                 nlml = gpgrid2.neg_marginal_likelihood(np.log(ls))
                 return nlml
 
-            opt_hyperparams = fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
+            opt_hyperparams = fmin(train_gp_on_ibcc_output, initialguess, maxfun=200,
+                                                     full_output=False, xtol=10, ftol=0.5)
+            #fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
             # use optimized grid size to make predictions
             results['IBCC_then_GP'] = {}
 
@@ -270,13 +272,8 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             rmsed = np.sqrt( np.sum((est_density - gold_density)**2) / float(len(gold_density)) )
             print "RMSE (density estimation): %.4f" % rmsed
 
-            #u_ts = np.zeros(est_density.shape[0])
-            #for j in range(est_density.shape[0]):
-            #    u_ts[j], _ =
             tau, _ = kendalltau(est_density, gold_density)
-            tau = tau / (float(len(est_density))**2)
-            #u = np.sum(u_ts) / len(u_ts)
-            print "U-statistic (density estimation): %.4f" % tau
+            print "Kendall's Tau (density estimation): %.4f" % tau
 
             if method not in auc_all:
                 auc_all[method] = [auc_mean]
@@ -322,3 +319,5 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
     np.save(outputdir + "rmsed.npy", rmsed_all)
     np.save(outputdir + "tau.npy", tau_all)
     np.save(outputdir + "mced.npy", mced_all)
+
+    return heatmapcombiner, gpgrid, gpgrid2, ibcc_combiner
