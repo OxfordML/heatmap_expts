@@ -11,7 +11,7 @@ run this one 5 different sub-samples if this is the correct number. Make sure we
 not the discrete grid values.
 
 '''
-
+import os
 import numpy as np
 import logging
 from heatmapbcc import HeatMapBCC
@@ -23,6 +23,7 @@ from scipy.stats import gaussian_kde, kendalltau
 from scipy.optimize import fmin#_cobyla,
 
 results_all = {}
+densityresults_all = {}
 auc_all = {}
 mce_all = {}
 rmse_all = {}
@@ -40,33 +41,33 @@ heatmapcombiner = None
 gpgrid2 = None
 ibcc_combiner = None
 
-def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, labels, targetsx, targetsy, gold_density,
-              navailable, nlabels, stepsize, outputdir, methods):
+def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls, labels, targetsx, targetsy, gold_density,
+              navailable, Ninitial_labels, Nlabel_increment, outputdir, methods):
     C = C_all
 
     print "No. report types = %i" % K
 
     # Initialize the optimal grid size for the separate IBCC method.
-    opt_nx = float(nx)
-    opt_ny = float(ny)
+    opt_nx = np.ceil(float(nx))
+    opt_ny = np.ceil(float(ny))
 
     #GPGRID OBJECT
-    gpgrid = GPGrid(nx, ny, z0=z0, shape_ls=10, rate_ls=10.0/100)
+    gpgrid = GPGrid(nx, ny, z0=z0, shape_ls=ls/10.0, rate_ls=10.0/100)
     gpgrid.verbose = False
 
     #HEATMAPBCC OBJECT
-    heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=z0, shape_ls=10, rate_ls=10.0/100, force_update_all_points=True)
+    heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=z0, shape_ls=ls/10.0, rate_ls=10.0/100, force_update_all_points=True)
     heatmapcombiner.min_iterations = 5
     heatmapcombiner.max_iterations = 200
     heatmapcombiner.conv_threshold = 0.1
     heatmapcombiner.verbose = False
 
     nout = nx * ny
-    gridoutputx = np.tile(np.arange(nx, dtype=np.float).reshape(nx, 1), (1, ny)).reshape(nout)
-    gridoutputy = np.tile(np.arange(ny, dtype=np.float).reshape(1, ny), (nx, 1)).reshape(nout)
+    #gridoutputx = np.tile(np.arange(nx, dtype=np.float).reshape(nx, 1), (1, ny)).reshape(nout)
+    #gridoutputy = np.tile(np.arange(ny, dtype=np.float).reshape(1, ny), (nx, 1)).reshape(nout)
 
-    while nlabels <= navailable:
-        C = C_all[0:nlabels, :]
+    while Ninitial_labels <= navailable:
+        C = C_all[0:Ninitial_labels, :]
         agents = np.unique(C[:,0])
         K = int(np.max(agents)+1)
         clusteridxs = clusteridxs_all[0:K]
@@ -75,6 +76,7 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
         # containers for results
         if not 'results' in globals():
             results = {}
+            densityresults = {}
 
         # indicator array to show whether reports are positive or negative
         posreports = (C[:, 3] == 1).astype(float)
@@ -87,21 +89,31 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
         # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
         if 'KDE' in methods:
             results['KDE'] = {}
-
+            densityresults['KDE'] = {}
             # Method used here performs automatic bandwidth determination - see help docs
-            posinputdata = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
-            neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
+            if len(np.unique(reportsy)) > 1:
+                posinputdata = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
+                neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
+            else:
+                posinputdata = reportsx[posreports>0][np.newaxis, :]
+                neginputdata = reportsx[negreports>0][np.newaxis, :]
+                
             logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
-            kdepos = gaussian_kde(posinputdata)
+            kdepos = gaussian_kde(posinputdata, 'scott')
             if neginputdata.shape[1] != 0:
-                kdeneg = gaussian_kde(neginputdata)
+                kdeneg = gaussian_kde(neginputdata, 'scott')
             #else: # Treat the points with no observation as negatives
                 # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
                 # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
 
             def kde_prediction(x, y):
-                grid_lower = np.vstack((x - 0.5, y - 0.5))
-                grid_upper = np.vstack((x + 0.5, y + 0.5))
+                if len(np.unique(y)) > 1:
+                    grid_lower = np.vstack((x - 0.5, y - 0.5))
+                    grid_upper = np.vstack((x + 0.5, y + 0.5))
+                else:
+                    grid_lower = np.vstack((x-0.5, np.zeros(len(y))))
+                    grid_upper = np.vstack((x+0.5, np.ones(len(y))))
+                    
                 p_loc_giv_damage = np.zeros(len(x))
                 p_loc_giv_nodamage = np.zeros(len(x))
 
@@ -122,7 +134,8 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             # Repeat for each of the test datasets
             for ts in range(len(labels)):
                 results['KDE'][ts] = kde_prediction(targetsx[ts], targetsy[ts])
-            results['KDE']['grid'] = kde_prediction(gridoutputx, gridoutputy)
+                densityresults['KDE'][ts] = results['KDE'][ts]
+            #results['KDE']['grid'] = kde_prediction(gridoutputx, gridoutputy)
 
             logging.info("KDE complete.")
 
@@ -131,23 +144,34 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             logging.info("Using a density GP without BCC...")
             # Get values for training points by taking frequencies -- only one report at each location, so give 1 for
             # positive reports, 0 otherwise
-            gpgrid.optimize([reportsx, reportsy],
-                            np.concatenate((posreports[:,np.newaxis]*0.8, (posreports+negreports)[:,np.newaxis]), axis=1))
+            #ls_initial = [1, 10, 50, 100, 200, 500, 1000]
+            #ls_randomtries = []
+            #for i in range(len(ls_initial)):
+            #    gpgrid.ls = ls_initial[i]
+            gpgrid.fit([reportsx, reportsy], #optimize([reportsx, reportsy],
+                            np.concatenate((posreports[:,np.newaxis], (posreports+negreports)[:,np.newaxis]), axis=1))
+            #    ls_randomtries.append(gpgrid.ls)
+            #print str(ls_randomtries)
+            #gpgrid.ls = np.min(ls_randomtries)
+            #gpgrid.fit([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis]*0.8, (posreports+negreports)[:,np.newaxis]), axis=1))
 
             results['Train_GP_on_Freq'] = {}
+            densityresults['Train_GP_on_Freq'] = {}
             for ts in range(len(labels)):
                 gp_preds = gpgrid.predict([targetsx[ts], targetsy[ts]])
                 results['Train_GP_on_Freq'][ts] = gp_preds
-            results['Train_GP_on_Freq']['grid'] = gpgrid.predict([gridoutputx, gridoutputy]).reshape(nx, ny)
+                densityresults['Train_GP_on_Freq'][ts] = gp_preds
+            #results['Train_GP_on_Freq']['grid'] = gpgrid.predict([gridoutputx, gridoutputy]).reshape(nx, ny)
 
         # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
+        gpgrid2 = GPGrid(opt_nx, opt_ny, z0=z0, shape_ls=ls/10.0, rate_ls=10.0/100)
+        ibcc_combiner = IBCC(2, 2, alpha0, nu0, K)
         if 'IBCC+GP' in methods:
             # Should this be dropped from the experiments, as it won't work without gridding the points? --> then run into
             # question of grid size etc. Choose grid so that squares have an average of 3 reports?
             logging.info("Running separate IBCC and GP...")
 
             # run standard IBCC
-            ibcc_combiner = IBCC(2, 2, alpha0, nu0, K)
             ibcc_combiner.clusteridxs_alpha0 = clusteridxs
             ibcc_combiner.verbose = False
             ibcc_combiner.min_iterations = 5
@@ -155,17 +179,12 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             ibcc_combiner.conv_threshold = 0.1
 
             #initialise a GP
-            initialguess = [opt_nx, opt_ny]
-            # noinspection PyTypeChecker
-            constraints = [lambda hp: 1 if np.all(np.asarray(hp[0:2]) >= 1) else -1, lambda hp: 1 if not np.isnan(hp[0]) and hp[0] - int(hp[0]) == 0 else -1,
-                           lambda hp: 1 if not np.isnan(hp[1]) and hp[1] - int(hp[1]) == 0 else -1]
-            gpgrid2 = GPGrid(opt_nx, opt_ny, z0=z0, shape_ls=10, rate_ls=10.0/100)
-            # noinspection PyTypeChecker
-            def train_gp_on_ibcc_output(hyperparams):
-                logging.debug("fmin gridx and gridy values: %f, %f" % (hyperparams[0], hyperparams[1]))
-                opt_nx = int(hyperparams[0])
-                opt_ny = int(hyperparams[1])
-                if opt_nx < 0 or opt_ny < 0 or np.isnan(opt_nx) or np.isnan(opt_ny):
+            initialguess = [np.log(opt_nx), np.log(opt_ny)]
+            def train_gp_on_ibcc_output(opt_nx, opt_ny):
+                #opt_nx = np.ceil(np.exp(hyperparams[0]))
+                #opt_ny = np.ceil(np.exp(hyperparams[1]))
+                logging.debug("fmin gridx and gridy values: %f, %f" % (opt_nx, opt_ny))
+                if opt_nx <= 0 or opt_ny <= 0 or np.isnan(opt_nx) or np.isnan(opt_ny):
                     return np.inf
                 gpgrid2.nx = opt_nx
                 gpgrid2.ny = opt_ny
@@ -188,22 +207,48 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
                 bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(opt_nx, opt_ny)), 1]
 
                 # use IBCC output to train GP
-                _, ls = gpgrid2.optimize([obsx, obsy], bcc_pred)
-                logging.debug("fmin param value for lengthscale: %f" % ls[0])
-                nlml = gpgrid2.neg_marginal_likelihood(np.log(ls))
+                gpgrid2.fit([obsx, obsy], bcc_pred)#optimize([obsx, obsy], bcc_pred)
+                ls = gpgrid2.ls
+                logging.debug("fmin param value for lengthscale: %f, %f" % (ls[0], ls[1]))
+                nlml = - ibcc_combiner.lowerbound() #+ gpgrid2.neg_marginal_likelihood(np.log(ls))
+                logging.debug("NLML: " + str(nlml))
                 return nlml
 
-            opt_hyperparams = fmin(train_gp_on_ibcc_output, initialguess, maxfun=200,
-                                                     full_output=False, xtol=10, ftol=0.5)
+            
+            #nunique_x = np.unique(reportsx).shape[0]
+            #nunique_y = np.unique(reportsy).shape[0]
+            # try different levels of separation with on average 3 data points per grid square, 5 per grid square and 10 per grid square.
+            topx = 0
+            topy = 0
+            lowest_nlml = np.inf
+            conv_counter = 0
+            for n in np.arange(10) * 5:
+                gridx = int(np.ceil(nx/float(ls[0]) * n))
+                gridy = int(np.ceil(ny/float(ls[1]) * n))
+                nlml = train_gp_on_ibcc_output(gridx, gridy)#initialguess, maxfun=20, full_output=False, xtol=10, ftol=1)
+                logging.debug("NLML = %.2f, lowest so far = %.2f" % (nlml, lowest_nlml))
+                if nlml < lowest_nlml:
+                    topx = gridx
+                    topy = gridy
+                    lowest_nlml = nlml
+                    conv_counter = 0
+                else:
+                    conv_counter += 1 # count how many times we have not improved
+                if conv_counter > 20:
+                    break
+            train_gp_on_ibcc_output(topx, topy)
             #fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
             # use optimized grid size to make predictions
             results['IBCC_then_GP'] = {}
-
+            densityresults['IBCC_then_GP'] = {}
             for ts in range(len(labels)):
-                gp_preds = gpgrid2.predict([targetsx[ts], targetsy[ts]])
+                targetsx_grid = (targetsx[ts] * topx/nx).astype(int)
+                targetsy_grid = (targetsy[ts] * topy/ny).astype(int)
+                gp_preds = gpgrid2.predict([targetsx_grid, targetsy_grid])
                 results['IBCC_then_GP'][ts] = gp_preds
-            gp_preds = gpgrid2.predict([gridoutputx, gridoutputy])
-            results['IBCC_then_GP']['grid'] = gp_preds.reshape(nx, ny)
+                densityresults['IBCC_then_GP'][ts] = gp_preds
+            #gp_preds = gpgrid2.predict([gridoutputx, gridoutputy])
+            #results['IBCC_then_GP']['grid'] = gp_preds.reshape(nx, ny)
 
         # RUN HEAT MAP BCC --------------------------------------------------------------------------------------------------
         if 'HeatmapBCC' in methods:
@@ -215,13 +260,15 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
             heatmapcombiner.combine_classifications(C, optimise_hyperparams=True)
 
             results['heatmapbcc'] = {}
+            densityresults['heatmapbcc'] = {}
             for ts in range(len(labels)):
                 bcc_pred = heatmapcombiner.predict(targetsx[ts], targetsy[ts])
                 bcc_pred = bcc_pred[1, :] # only interested in positive "damage class"
                 results['heatmapbcc'][ts] = bcc_pred
+                densityresults['heatmapbcc'][ts] = np.exp(heatmapcombiner.lnkappa_out[1, :])
 
-            bcc_pred = heatmapcombiner.predict_grid()
-            results['heatmapbcc']['grid'] = bcc_pred[1, :]
+            #_, bcc_pred = heatmapcombiner.predict_grid() # take the second argument to get the density rather than state at observed points
+            #results['heatmapbcc']['grid'] = bcc_pred[1, :]
 
         # EVALUATE ALL RESULTS ---------------------------------------------------------------------------------------------
         evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
@@ -229,26 +276,32 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
         gold_density = gold_density.flatten()
 
         for method in results:
-            print 'Results for %s with %i labels' % (method, nlabels)
+            print ''
+            print 'Results for %s with %i labels' % (method, Ninitial_labels)
             pred = results[method]
+            est_density = densityresults[method]
 
             mce = []
             rmse = []
             auc = []
+            best_thresholds = []
             mced = []
             rmsed = []
             tau = []
             for ts in range(len(labels)):
                 testresults = pred[ts].flatten()
+                testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
+                testresults[testresults==1] = 0.999999
 
-                mce_ts = - np.sum(labels[ts] * np.log(testresults)) - np.sum(labels[ts] * np.log(1 - testresults))
+                mce_ts = - np.sum(labels[ts] * np.log(testresults)) - np.sum((1-labels[ts]) * np.log(1 - testresults))
                 mce_ts = mce_ts / float(len(labels[ts]))
                 mce.append( mce_ts )
 
                 rmse.append( np.sqrt( np.sum((testresults - labels[ts])**2) / float(len(labels[ts])) ) )
 
-                auc_by_class, _ = evaluator.eval_auc(testresults, labels[ts])
+                auc_by_class, _, best_thresholds_ts = evaluator.eval_auc(testresults, labels[ts])
                 auc.append( np.sum(np.bincount(labels[ts]) * auc_by_class) / len(labels[ts]) )
+                best_thresholds.append( np.sum(np.bincount(labels[ts]) * best_thresholds_ts) / len(labels[ts]))
 
             mce_mean = np.sum(mce) / float(len(labels))
             rmse_mean = np.sum(rmse) / float(len(labels))
@@ -260,12 +313,14 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
 
             print "Cross entropy (individual data points): %.4f with SD %.4f" % (mce_mean, mce_var**0.5)
             print "RMSE (individual data points): %.4f with SD %.4f" % (rmse_mean, rmse_var**0.5)
-            print "AUC (individual data points): %.4f with SD %.4f" % (auc_mean, auc_var**0.5)
+            print "AUC (individual data points): %.4f with SD %.4f; best threshold %.2f" % (auc_mean, auc_var**0.5, np.sum(best_thresholds) / float(len(labels)) )
 
             # assume gold density and est density have 1 row for each class
-            est_density = pred['grid'].flatten()
+            est_density = est_density[0].flatten() # not pred['grid']?
+            est_density[est_density==0] = 0.0000001
+            est_density[est_density==1] = 0.9999999
 
-            mced = - np.sum(gold_density * np.log(est_density)) - np.sum(gold_density * np.log(1-est_density))
+            mced = - np.sum(gold_density * np.log(est_density)) - np.sum((1-gold_density) * np.log(1-est_density))
             mced = mced / float(len(gold_density))
             print "Cross entropy (density estimation): %.4f" % mced
 
@@ -301,14 +356,17 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
                 mced_all[method].append(mced)
 
         # set up next iteration
-        results_all[nlabels] = results
-        if nlabels==C_all.shape[0]:
+        results_all[Ninitial_labels] = results
+        densityresults_all[Ninitial_labels] = densityresults
+        if Ninitial_labels==C_all.shape[0]:
             break
-        elif C_all.shape[0]-nlabels<100:
-            nlabels = C_all.shape[0]
+        elif C_all.shape[0]-Ninitial_labels<100:
+            Ninitial_labels = C_all.shape[0]
         else:
-            nlabels += stepsize
+            Ninitial_labels += Nlabel_increment
 
+    if not os.path.exists(outputdir):
+        os.mkdir(outputdir)
     np.save(outputdir + "results.npy", results_all)
     np.save(outputdir + "rmse.npy", rmse_all)
     np.save(outputdir + "auc.npy", auc_all)
@@ -320,4 +378,4 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, la
     np.save(outputdir + "tau.npy", tau_all)
     np.save(outputdir + "mced.npy", mced_all)
 
-    return heatmapcombiner, gpgrid, gpgrid2, ibcc_combiner
+    return results_all, densityresults_all, heatmapcombiner, gpgrid, gpgrid2, ibcc_combiner

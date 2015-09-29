@@ -72,9 +72,9 @@ if __name__ == '__main__':
 #     K = len(np.unique(C[:,0]))
 
     # number of labels in first iteration dataset
-    nlabels = 100
+    Ninitial_labels = 100
     # increment the number of labels at each iteration
-    stepsize = 100
+    Nlabel_increment = 100
 
     # number of available data points
     navailable =  C.shape[0]
@@ -83,4 +83,4 @@ if __name__ == '__main__':
     outputdir = "./data/output/ush_"
     heatmapcombiner, gpgrid, gpgrid2, ibcc_combiner = prediction_tests.run_tests(K, C, nx, ny, z0, alpha0,
                                                         clusteridxs_all, alpha0_all, nu0, labels, targetsx, targetsy,
-                                                        gold_density, navailable, nlabels, stepsize, outputdir, methods)
+                                                        gold_density, navailable, Ninitial_labels, Nlabel_increment, outputdir, methods)
