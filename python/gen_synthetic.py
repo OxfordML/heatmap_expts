@@ -181,7 +181,7 @@ if 'HeatmapBCC' in methods:
 if 'KDE' in methods:
     plt.plot(xtest[sidxs], results[Ninitial_labels]['KDE'][0][sidxs], color='darkgreen', label='KDE')
 if "GP" in methods:
-    plt.plot(xtest[sidxs], results[Ninitial_labels]['Train_GP_on_Freq'][0][sidxs], color='brown', label='gp')
+    plt.plot(xtest[sidxs], results[Ninitial_labels]['Train_GP_on_Freq'][0][sidxs], color='brown', label='GP')
 if "IBCC+GP" in methods:
     plt.plot(xtest[sidxs], results[Ninitial_labels]['IBCC_then_GP'][0][sidxs], color='black', label='IBCC+GP')
 

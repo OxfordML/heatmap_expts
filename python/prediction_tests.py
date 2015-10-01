@@ -60,11 +60,8 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
     heatmapcombiner.min_iterations = 5
     heatmapcombiner.max_iterations = 200
     heatmapcombiner.conv_threshold = 0.1
-    heatmapcombiner.verbose = False
-
-    nout = nx * ny
-    #gridoutputx = np.tile(np.arange(nx, dtype=np.float).reshape(nx, 1), (1, ny)).reshape(nout)
-    #gridoutputy = np.tile(np.arange(ny, dtype=np.float).reshape(1, ny), (nx, 1)).reshape(nout)
+    heatmapcombiner.verbose = True
+    heatmapcombiner.uselowerbound = True
 
     while Ninitial_labels <= navailable:
         C = C_all[0:Ninitial_labels, :]
@@ -148,7 +145,7 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
             #ls_randomtries = []
             #for i in range(len(ls_initial)):
             #    gpgrid.ls = ls_initial[i]
-            gpgrid.fit([reportsx, reportsy], #optimize([reportsx, reportsy],
+            gpgrid.optimize([reportsx, reportsy], #fit([reportsx, reportsy],
                             np.concatenate((posreports[:,np.newaxis], (posreports+negreports)[:,np.newaxis]), axis=1))
             #    ls_randomtries.append(gpgrid.ls)
             #print str(ls_randomtries)
@@ -158,7 +155,7 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
             results['Train_GP_on_Freq'] = {}
             densityresults['Train_GP_on_Freq'] = {}
             for ts in range(len(labels)):
-                gp_preds = gpgrid.predict([targetsx[ts], targetsy[ts]])
+                gp_preds, _ = gpgrid.predict([targetsx[ts], targetsy[ts]])
                 results['Train_GP_on_Freq'][ts] = gp_preds
                 densityresults['Train_GP_on_Freq'][ts] = gp_preds
             #results['Train_GP_on_Freq']['grid'] = gpgrid.predict([gridoutputx, gridoutputy]).reshape(nx, ny)
@@ -207,7 +204,7 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
                 bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(opt_nx, opt_ny)), 1]
 
                 # use IBCC output to train GP
-                gpgrid2.fit([obsx, obsy], bcc_pred)#optimize([obsx, obsy], bcc_pred)
+                gpgrid2.optimize([obsx, obsy], bcc_pred) # fit([obsx, obsy], bcc_pred)
                 ls = gpgrid2.ls
                 logging.debug("fmin param value for lengthscale: %f, %f" % (ls[0], ls[1]))
                 nlml = - ibcc_combiner.lowerbound() #+ gpgrid2.neg_marginal_likelihood(np.log(ls))
@@ -244,7 +241,7 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
             for ts in range(len(labels)):
                 targetsx_grid = (targetsx[ts] * topx/nx).astype(int)
                 targetsy_grid = (targetsy[ts] * topy/ny).astype(int)
-                gp_preds = gpgrid2.predict([targetsx_grid, targetsy_grid])
+                gp_preds, _ = gpgrid2.predict([targetsx_grid, targetsy_grid])
                 results['IBCC_then_GP'][ts] = gp_preds
                 densityresults['IBCC_then_GP'][ts] = gp_preds
             #gp_preds = gpgrid2.predict([gridoutputx, gridoutputy])
@@ -262,10 +259,9 @@ def run_tests(K, C_all, nx, ny, z0, alpha0, clusteridxs_all, alpha0_all, nu0, ls
             results['heatmapbcc'] = {}
             densityresults['heatmapbcc'] = {}
             for ts in range(len(labels)):
-                bcc_pred = heatmapcombiner.predict(targetsx[ts], targetsy[ts])
-                bcc_pred = bcc_pred[1, :] # only interested in positive "damage class"
-                results['heatmapbcc'][ts] = bcc_pred
-                densityresults['heatmapbcc'][ts] = np.exp(heatmapcombiner.lnkappa_out[1, :])
+                bcc_pred, bcc_density, _ = heatmapcombiner.predict(targetsx[ts], targetsy[ts])
+                results['heatmapbcc'][ts] = bcc_pred[1, :] # only interested in positive "damage class"
+                densityresults['heatmapbcc'][ts] = bcc_density[1, :]
 
             #_, bcc_pred = heatmapcombiner.predict_grid() # take the second argument to get the density rather than state at observed points
             #results['heatmapbcc']['grid'] = bcc_pred[1, :]
