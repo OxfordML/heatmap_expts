@@ -84,9 +84,9 @@ if __name__ == '__main__':
     # number of available data points
     navailable = C.shape[0]
     # number of labels in first iteration dataset
-    Ninitial_labels = 2000
+    Nreps_initial = 2000
     # increment the number of labels at each iteration
-    Nlabel_increment = 100
+    Nrep_inc = 100
     
     #GPGRID OBJECT
     gpgrid = GPGrid(nx, ny, z0=z0, shape_ls=10, rate_ls=10.0/100)
@@ -104,8 +104,8 @@ if __name__ == '__main__':
     opt_nx = float(nx)
     opt_ny = float(ny)
 
-    while Ninitial_labels <= navailable:
-        C = C_all[0:Ninitial_labels, :]
+    while Nreps_initial <= navailable:
+        C = C_all[0:Nreps_initial, :]
         agents = np.unique(C[:,0])
         K = int(np.max(agents)+1)
         clusteridxs = clusteridxs_all[0:K]
@@ -237,7 +237,7 @@ if __name__ == '__main__':
         evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
         
         for method in results:
-            print 'Results for %s with %i labels' % (method, Ninitial_labels)
+            print 'Results for %s with %i labels' % (method, Nreps_initial)
             pred = results[method]
             testresults = pred.flatten()
             mce = evaluator.eval_crossentropy(testresults, labels)
@@ -256,13 +256,13 @@ if __name__ == '__main__':
                 mce_all[method].append(mce)
             
         # set up next iteration
-        results_all[Ninitial_labels] = results
-        if Ninitial_labels==C_all.shape[0]:
+        results_all[Nreps_initial] = results
+        if Nreps_initial==C_all.shape[0]:
             break
-        elif C_all.shape[0]-Ninitial_labels<100:
-            Ninitial_labels = C_all.shape[0] 
+        elif C_all.shape[0]-Nreps_initial<100:
+            Nreps_initial = C_all.shape[0] 
         else:
-            Ninitial_labels += Nlabel_increment
+            Nreps_initial += Nrep_inc
             
     np.save("./data/output/results.npy", results_all)
     np.save("./data/output/acc.npy", acc_all)
