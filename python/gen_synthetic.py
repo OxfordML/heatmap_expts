@@ -21,7 +21,7 @@ Large scale interpolation needed but in some areas we get confident, alternating
 cause length scale collapse leading to no interpolation? Does the use of nu0 < 1 affect this? 
 Should we show potential problems when t itself is treated as a smooth function? Reason for difference: observations
 of rho are very noisy and lowering length scale doesn't lead to extreme values of rho. In fact, keeping length scale higher
-means more extreme values of rho where pseudo counts are shared.
+means more extreme values of rho where pseudo counts are shared. 
 
 4. EFFECT OF UPDATED REPORTS FROM ONE PERSON on a model that assumes all t and c are independent.
   
@@ -43,7 +43,7 @@ import os
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-RESET_ALL_DATA = True
+RESET_ALL_DATA = False
 
 # FUNCTIONS -------------------------------------------------------------------------------------------------------
 def dataset_location(dataset_label):
@@ -139,9 +139,10 @@ def gen_synth_reports(reset_all_data, Nreports, a, b, xreports, yreports, t_gold
     
     #generate confusion matrices
     pi = np.zeros((J, 2, S))
-    for j in range(J):
-        pi[j, 0, :] = beta.rvs(alpha0[j, 0, 0], alpha0[j, 1, 0], size=S)
-        pi[j, 1, :] = 1 - pi[j, 0, :]
+    for s in range(S):
+        for j in range(J):
+            pi[j, 0, s] = beta.rvs(alpha0[j, 0, s], alpha0[j, 1, s])
+            pi[j, 1, s] = 1 - pi[j, 0, s]
     
     # generate reports -- get the correct bit of the conf matrix
     pi_reps = pi[:, 1, :].reshape(J, S)
@@ -239,7 +240,7 @@ z0 = nu0[1] / np.sum(nu0)
 # just make different plots!
 
 # Number of datasets
-nruns = 1#25
+nruns = 20
 nsteps = 8
 
 # REPORTS
@@ -251,95 +252,96 @@ logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_in
 # REPORTERS
 S = 5 # number of reporters
 
-a_reliable = 9999999999
-b_reliable = 1
+a_reliable = 1000.0
+b_reliable = 1.0
 
-a_weak = 5.5
-b_weak = 4.5
+a_weak = 50.0
+b_weak = 50.0
 
-nproportions = 6.0 
+nproportions = 4
 if nproportions > S:
     nproportions = S
 weak_proportions = np.arange(nproportions + 1) / float(nproportions)
 
-for d in range(nruns):
-    for p_idx, p in enumerate(weak_proportions):
+if __name__ == '__main__':
+    for d in range(nruns):
+        for p_idx, p in enumerate(weak_proportions):
+        
+            a = np.ones(S)
+            a[:S * p] = a_reliable
+            a[S * p:] = a_weak
+            b = np.ones(S)
+            b[:S*p] = b_reliable
+            b[S*p:] = b_weak
+        
+            dataset_label = "d%i" % d
+            logging.info("Generating data/reloading old data for proportion %i, Dataset %d" % (p_idx, d))
+            xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA & (p_idx==0), Nreports, ls, dataset_label) # only reset on the first iteration
+            dataset_label = "p%i_d%i" % (p_idx, d)
+            gen_synth_reports(RESET_ALL_DATA, Nreports, a, b, xreports, yreports, t_gold, dataset_label) # only reset on the first iteration
     
+    # RUN TESTS -----------------------------------------------------------------------------------------------------------
+    for p_idx, p in enumerate(weak_proportions):
+        
         a = np.ones(S)
         a[:S * p] = a_reliable
         a[S * p:] = a_weak
         b = np.ones(S)
         b[:S*p] = b_reliable
         b[S*p:] = b_weak
-    
-        dataset_label = "d%i" % d
-        logging.info("Generating data/reloading old data for proportion %i, Dataset %d" % (p_idx, d))
-        xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA & (p_idx==0), Nreports, ls, dataset_label) # only reset on the first iteration
-        dataset_label = "p%i_d%i" % (p_idx, d)
-        gen_synth_reports(RESET_ALL_DATA, Nreports, a, b, xreports, yreports, t_gold, dataset_label) # only reset on the first iteration
-
-# RUN TESTS -----------------------------------------------------------------------------------------------------------
-for p_idx, p in enumerate(weak_proportions):
-    
-    a = np.ones(S)
-    a[:S * p] = a_reliable
-    a[S * p:] = a_weak
-    b = np.ones(S)
-    b[:S*p] = b_reliable
-    b[S*p:] = b_weak
-    
-    for d in range(nruns):
-        dataset_label = "d%i" % d
-        logging.info("Running tests for proportion %i, Dataset %d" % (p_idx, d))
         
-        outputdir, data_outputdir = dataset_location(dataset_label)    
-        x_all = np.load(data_outputdir + "x_all.npy")
-        xtest = x_all[Nreports:]
-        y_all = np.load(data_outputdir + "y_all.npy")
-        ytest = y_all[Nreports:]
-        f_all = np.load(data_outputdir + "f_all.npy")
-        f_test = f_all[Nreports:]
-        rho_test = sigmoid(f_test)
-        t_all = np.load(data_outputdir + "t_all.npy" )# t_all
-        t_test_gold = t_all[Nreports:]
-        
-        dataset_label = "p%i_d%i" % (p_idx, d)
-        outputdir, data_outputdir = dataset_location(dataset_label) 
-        C = np.load(data_outputdir + "C.npy")
-        
-        alpha0 = np.zeros((J, 2, S))
-        for s in range(S):
-            alpha0 += b[s]
-            alpha0[np.arange(J), np.arange(J), s] = a[s]    
+        for d in range(nruns):
+            dataset_label = "d%i" % d
+            logging.info("Running tests for proportion %i, Dataset %d" % (p_idx, d))
             
-        # Run the tests with the current data set
-        tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0)            
-        tester.run_tests(C, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, rho_test, Nreps_initial, Nrep_inc)
-        tester.save_self()
- 
-# # SPARSENESS TESTS ----------------------------------------------------------------------------------------------------
-# 
-# # Doesn't this come from running the previous experiments anyway? Taking one value of p and looking at the performance
-# # as the labels come in... 
-# # Number of datasets
-# nruns = 20
-# nsteps = 10
-# 
-# # REPORTS
-# Nreports = 1000 # total number of reports in complete data set
-# Nreps_initial = 100 # number of labels in first iteration data set
-# Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
-# 
-# # REPORTERS
-# S = 1 # number of reporters
-# 
-# a = 1000000
-# b = 1
-# 
-# for d in range(nruns):
-#     logging.info("Dataset %d" % d)
-#     run_synth_test(Nreports, a, b, d) 
-
-# TRUSTED REPORTER TESTS -----------------------------------------------------------------------------------------------
-# Show what happens when we supply labels from a few highly reliable workers, the changes should propagate. Can start 
-# with noisy labels only, then show what happens when trusted reports are introduced.
+            outputdir, data_outputdir = dataset_location(dataset_label)    
+            x_all = np.load(data_outputdir + "x_all.npy")
+            xtest = x_all[Nreports:]
+            y_all = np.load(data_outputdir + "y_all.npy")
+            ytest = y_all[Nreports:]
+            f_all = np.load(data_outputdir + "f_all.npy")
+            f_test = f_all[Nreports:]
+            rho_test = sigmoid(f_test)
+            t_all = np.load(data_outputdir + "t_all.npy" )# t_all
+            t_test_gold = t_all[Nreports:]
+            
+            dataset_label = "p%i_d%i" % (p_idx, d)
+            outputdir, data_outputdir = dataset_location(dataset_label) 
+            C = np.load(data_outputdir + "C.npy")
+            
+            alpha0 = np.zeros((J, 2, S))
+            for s in range(S):
+                alpha0 += 1
+                alpha0[np.arange(J), np.arange(J), s] = 1.1    
+                
+            # Run the tests with the current data set
+            tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, ls)            
+            tester.run_tests(C, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, rho_test, Nreps_initial, Nrep_inc)
+            tester.save_separate_results()
+     
+    # # SPARSENESS TESTS ----------------------------------------------------------------------------------------------------
+    # 
+    # # Doesn't this come from running the previous experiments anyway? Taking one value of p and looking at the performance
+    # # as the labels come in... 
+    # # Number of datasets
+    # nruns = 20
+    # nsteps = 10
+    # 
+    # # REPORTS
+    # Nreports = 1000 # total number of reports in complete data set
+    # Nreps_initial = 100 # number of labels in first iteration data set
+    # Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
+    # 
+    # # REPORTERS
+    # S = 1 # number of reporters
+    # 
+    # a = 1000000
+    # b = 1
+    # 
+    # for d in range(nruns):
+    #     logging.info("Dataset %d" % d)
+    #     run_synth_test(Nreports, a, b, d) 
+    
+    # TRUSTED REPORTER TESTS -----------------------------------------------------------------------------------------------
+    # Show what happens when we supply labels from a few highly reliable workers, the changes should propagate. Can start 
+    # with noisy labels only, then show what happens when trusted reports are introduced.

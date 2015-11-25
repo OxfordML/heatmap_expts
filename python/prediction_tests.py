@@ -10,6 +10,23 @@ See if the data points have been extracted correctly. We currently have 294170 t
 run this one 5 different sub-samples if this is the correct number. Make sure we are using the original house locations,
 not the discrete grid values.
 
+The simulations will use a fixed length scale to compare models. This will isolate the task of searching for 
+length-scales (i.e. hyperparameter optimisation) from the model comparison and mean that the results are not 
+dependent on our choice of method for optimising hyperparameters. 
+
+We may also need to constrain length-scale with the real data too because we can use background knowledge. Also,
+we do not want one method to get lucky with the optimisation process, while other methods suffer -- so perhaps best to 
+test all with same length scale. We can also look at whether the choice of length scale with a subset of data is a 
+problem by comparing the model with length scale optimised on a subset with length scale optimised on the whole dataset.
+
+In practice, length scale can be determined in an informative way from background knowledge.
+A second experiment might be to take a few simulations with unreliable data, or use real data, and see how easy it is
+to learn the length scale with ML or MAP. I.e. do we need a better method or informative priors to learn length scale
+using our model and unreliable data, or to replace VB? Do other models avoid this problem? Or is it that the length 
+scale only becomes a problem when we have only got noisy reports and very little signal? An alternative to ML might be 
+to use a set of equally-spaced values, then fine-tune the best; we would need an experiment to look at the sensitivity 
+of results to the length scale to determine the spacing of possible values, and whether any tuning is really necessary.
+
 '''
 import os
 import numpy as np
@@ -22,29 +39,14 @@ from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, kendalltau
 
 class Tester(object):
-    
-    results_all = {}
-    densityresults_all = {}
-    auc_all = {}
-    mce_all = {}
-    rmse_all = {}
-    
-    auc_all_var = {}
-    mce_all_var = {}
-    rmse_all_var = {}
-    
-    tau_all = {}
-    mced_all = {}
-    rmsed_all = {}
-    
-    gpgrid = None
-    heatmapcombiner = None
-    gpgrid2 = None
-    ibcc_combiner = None
-    
-    outputdir = None
-    
-    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, clusteridxs_all=None):
+        
+    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, ls_initial=0, optimise=True, clusteridxs_all=None):
+        
+        # Controls whether we optimise hyperparameters, including length scale
+        self.optimise = optimise
+        
+        self.ls_initial = ls_initial
+        
         self.outputdir = outputdir
         self.methods = methods
         self.Nlabels_all = Nlabels_all
@@ -54,14 +56,29 @@ class Tester(object):
         if not np.any(clusteridxs_all):
             clusteridxs_all = np.zeros(self.alpha0_all.shape[2], dtype=int)
         self.clusteridxs_all = clusteridxs_all
+
+        self.results_all = {}
+        self.densityresults_all = {}
+        self.auc_all = {}
+        self.mce_all = {}
+        self.rmse_all = {}
+        
+        self.auc_all_var = {}
+        self.mce_all_var = {}
+        self.rmse_all_var = {}
+        
+        self.tau_all = {}
+        self.mced_all = {}
+        self.rmsed_all = {}
+        
+        self.gpgrid = None
+        self.heatmapcombiner = None
+        self.gpgrid2 = None
+        self.ibcc_combiner = None
     
     def run_tests(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
 
         C = C_all
-    
-        # Initialize the optimal grid size for the separate IBCC method.
-        opt_nx = np.ceil(float(nx))
-        opt_ny = np.ceil(float(ny))
     
         while Nlabels <= self.Nlabels_all:
             
@@ -146,7 +163,7 @@ class Tester(object):
                 ls_initial = [2, 10, 50, 100]
                 nlml = np.inf
                 gpgrid_opt = None
-                chosen_i = 0
+                #chosen_i = 0
                 for i in range(len(ls_initial)):
                     rate_ls = 2.0 / ls_initial[i]
                     self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_ls=2.0, rate_ls=rate_ls)
@@ -157,39 +174,45 @@ class Tester(object):
                     if self.gpgrid.nlml < nlml:
                         nlml = self.gpgrid.nlml
                         gpgrid_opt = self.gpgrid
-                        chosen_i = i
-                logging.info("Chosen ls_initial=%.2f" % ls_initial[chosen_i])
-                ls_initial = ls_initial[chosen_i]
+                        #chosen_i = i
+                ls_initial = gpgrid_opt.ls[0]
                 self.gpgrid = gpgrid_opt
     
                 gp_preds, _ = self.gpgrid.predict([targetsx, targetsy])
-                results['Train_GP_on_Freq'] = gp_preds
-                densityresults['Train_GP_on_Freq'] = gp_preds
+                results['GP'] = gp_preds
+                densityresults['GP'] = gp_preds
                 #results['Train_GP_on_Freq']['grid'] = self.gpgrid.predict([gridoutputx, gridoutputy]).reshape(nx, ny)
             else:
                 ls_initial = nx
+                
+            # Set bounds on the starting length scale
+            if ls_initial < 1:
+                ls_initial = 1.0
+            elif ls_initial > 5 * nx:
+                ls_initial = 5 * nx
+            logging.info("Chosen ls_initial=%.2f" % ls_initial)
                 
             # default hyperparameter initialisation points for all the GPs used below
             shape_ls = 2.0
             rate_ls = shape_ls / ls_initial
     
             # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
-            self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls)
-            self.gpgrid2.verbose = False # use this verbose flag for this whole method
-            self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)
             if 'IBCC+GP' in self.methods:
                 # Should this be dropped from the experiments, as it won't work without gridding the points? --> then run into
                 # question of grid size etc. Choose grid so that squares have an average of 3 reports?
                 logging.info("Running separate IBCC and GP...")
-    
-                # run standard IBCC
-                self.ibcc_combiner.clusteridxs_alpha0 = clusteridxs
-                self.ibcc_combiner.verbose = self.gpgrid2.verbose
-                self.ibcc_combiner.min_iterations = 5
-                self.ibcc_combiner.max_iterations = 200
-                self.ibcc_combiner.conv_threshold = 0.1
-    
+        
                 def train_gp_on_ibcc_output(opt_nx, opt_ny):
+                    # run standard IBCC
+                    self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls)
+                    self.gpgrid2.verbose = False # use this verbose flag for this whole method
+                    self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)                
+                    self.ibcc_combiner.clusteridxs_alpha0 = clusteridxs
+                    self.ibcc_combiner.verbose = self.gpgrid2.verbose
+                    self.ibcc_combiner.min_iterations = 5
+                    self.ibcc_combiner.max_iterations = 200
+                    self.ibcc_combiner.conv_threshold = 0.1    
+                    
                     #opt_nx = np.ceil(np.exp(hyperparams[0]))
                     #opt_ny = np.ceil(np.exp(hyperparams[1]))
                     logging.debug("fmin gridx and gridy values: %f, %f" % (opt_nx, opt_ny))
@@ -216,27 +239,27 @@ class Tester(object):
                     bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(opt_nx, opt_ny)), 1]
     
                     # use IBCC output to train GP
-                    pT, _ = self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100) # fit([obsx, obsy], bcc_pred)
+                    self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100)
+                    pT, _ = self.gpgrid2.predict([reportsx_grid,  reportsy_grid]) # use the report locations
+                    pT = pT[np.newaxis, :]
                     ls = self.gpgrid2.ls
                     if self.gpgrid2.verbose:
                         logging.debug("fmin param value for lengthscale: %f, %f" % (ls[0], ls[1]))
                     
                     self.ibcc_combiner.lnjoint(alldata=True)
-                    lnpCT = np.sum(pT * self.ibcc_combiner.lnpCT)            
+                    lnpCT = np.sum(pT * (self.ibcc_combiner.lnPi[:, C_flat[:, 2].astype(int), C_flat[:, 0].astype(int)] 
+                                         + self.ibcc_combiner.lnkappa))            
                     lnpPi = self.ibcc_combiner.post_lnpi()
                     lnpKappa = self.ibcc_combiner.post_lnkappa()
                     EEnergy = lnpCT + lnpPi + lnpKappa
-                    
+                     
                     # Entropy of the variational distribution
                     lnqT = np.sum(pT[pT != 0] * np.log(pT[pT != 0])) #self.ibcc_combiner.q_ln_t()
                     lnqPi = self.ibcc_combiner.q_lnPi()
                     lnqKappa = self.ibcc_combiner.q_lnkappa()
                     H = lnqT + lnqPi + lnqKappa
-                    if self.gpgrid2.verbose:
-                        logging.debug('EEnergy %.3f, H %.3f, lnpCT %.3f, lnqT %.3f, lnpKappa %.3f, lnqKappa %.3f, lnpPi %.3f, lnqPi %.3f' % \
-                          (EEnergy, H, lnpCT, lnqT, lnpKappa, lnqKappa, lnpPi, lnqPi))                              
-                    # Lower Bound
-                    nlml = - EEnergy + H                
+            
+                    nlml = - (EEnergy - H)
                     
                     if self.gpgrid2.verbose:
                         logging.debug("NLML: " + str(nlml))
@@ -257,7 +280,6 @@ class Tester(object):
                         topx = gridx
                         topy = gridy
                         lowest_nlml = nlml
-                        conv_counter = 0
                 logging.info("Best grid size found so far: %i %i" % (topx, topy))
                 train_gp_on_ibcc_output(topx, topy)
                 #fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
@@ -265,8 +287,8 @@ class Tester(object):
                 targetsx_grid = (targetsx * topx/nx).astype(int)
                 targetsy_grid = (targetsy * topy/ny).astype(int)
                 gp_preds, _ = self.gpgrid2.predict([targetsx_grid, targetsy_grid])
-                results['IBCC_then_GP'] = gp_preds
-                densityresults['IBCC_then_GP'] = gp_preds
+                results['IBCC+GP'] = gp_preds
+                densityresults['IBCC+GP'] = gp_preds
                 #gp_preds = self.gpgrid2.predict([gridoutputx, gridoutputy])
                 #results['IBCC_then_GP']['grid'] = gp_preds.reshape(nx, ny)
     
@@ -291,8 +313,8 @@ class Tester(object):
                 self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=True)
     
                 bcc_pred, bcc_density, _ = self.heatmapcombiner.predict(targetsx, targetsy)
-                results['heatmapbcc'] = bcc_pred[1, :] # only interested in positive "damage class"
-                densityresults['heatmapbcc'] = bcc_density[1, :]
+                results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
+                densityresults['HeatmapBCC'] = bcc_density[1, :]
     
                 #_, bcc_pred = self.heatmapcombiner.predict_grid() # take the second argument to get the density rather than state at observed points
                 #results['heatmapbcc']['grid'] = bcc_pred[1, :]
