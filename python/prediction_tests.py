@@ -36,7 +36,7 @@ from ibccperformance import Evaluator
 from ibcc import IBCC
 from gpgrid import GPGrid
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, kendalltau
+from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn
 
 class Tester(object):
         
@@ -45,6 +45,7 @@ class Tester(object):
         # Controls whether we optimise hyperparameters, including length scale
         self.optimise = optimise
         
+        # Set this to zero to use the optimal value from the standard GP
         self.ls_initial = ls_initial
         
         self.outputdir = outputdir
@@ -59,14 +60,11 @@ class Tester(object):
 
         self.results_all = {}
         self.densityresults_all = {}
+        self.densitySD_all = {}
         self.auc_all = {}
         self.mce_all = {}
         self.rmse_all = {}
-        
-        self.auc_all_var = {}
-        self.mce_all_var = {}
-        self.rmse_all_var = {}
-        
+
         self.tau_all = {}
         self.mced_all = {}
         self.rmsed_all = {}
@@ -92,6 +90,7 @@ class Tester(object):
     
             results = {}
             densityresults = {}
+            densitySD = {}
     
             # indicator array to show whether reports are positive or negative
             posreports = (C[:, 3] == 1).astype(float)
@@ -103,55 +102,52 @@ class Tester(object):
     
             # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
             if 'KDE' in self.methods:
-                results['KDE'] = {}
-                densityresults['KDE'] = {}
                 # Method used here performs automatic bandwidth determination - see help docs
                 posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
                 neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
                 logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
                 if posinputdata.shape[1] != 0:
-                    kdepos = gaussian_kde(posinputdata, 'scott')
+                    if self.optimise:
+                        kdepos = gaussian_kde(posinputdata, 'scott')
+                    else:
+                        kdepos = gaussian_kde(posinputdata, self.ls_initial)
                 if neginputdata.shape[1] != 0:
-                    kdeneg = gaussian_kde(neginputdata, 'scott')
+                    if self.optimise:
+                        kdeneg = gaussian_kde(neginputdata, 'scott')
+                    else:
+                        kdeneg = gaussian_kde(neginputdata, self.ls_initial)
+                    
                 #else: # Treat the points with no observation as negatives
                     # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
                     # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
     
-                def kde_prediction(x, y):
-                    if len(np.unique(y)) > 1:
-                        grid_lower = np.vstack((x - 0.5, y - 0.5))
-                        grid_upper = np.vstack((x + 0.5, y + 0.5))
+                def logit(a):
+                    return np.log(a / (1-a))
+    
+                def kde_prediction(targets):                       
+                    if posinputdata.shape[1] != 0:
+                        logp_loc_giv_damage = kdepos.logpdf(targets)
                     else:
-                        grid_lower = np.vstack((x-0.5, np.zeros(len(y))))
-                        grid_upper = np.vstack((x+0.5, np.ones(len(y))))
-                        
-                    p_loc_giv_damage = np.zeros(len(x))
-                    p_loc_giv_nodamage = np.zeros(len(x))
-    
-                    for i in range(len(x)):
-                        if i%1000 == 0:
-                            logging.debug("Processing %i of %i" % (i,len(x)))
+                        norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
+                        logp_loc_giv_damage = mvn.logpdf(logit(targets.T / norma), mean=nx / 2.0, cov=10000)
                             
-                        if posinputdata.shape[1] != 0:
-                            p_loc_giv_damage[i] = kdepos.integrate_box(grid_lower[:, i], grid_upper[:, i])
-                        else:
-                            p_loc_giv_damage[i] = 1.0 / (nx * ny)
-                            
-                        if neginputdata.shape[1] != 0:
-                            p_loc_giv_nodamage[i] = kdeneg.integrate_box(grid_lower[:, i], grid_upper[:, i])
-                        else:
-                            p_loc_giv_nodamage[i] = 1.0 / (nx*ny)
+                    if neginputdata.shape[1] != 0:
+                        logp_loc_giv_nodamage = kdeneg.logpdf(targets)#integrate_box(grid_lower[:, i], grid_upper[:, i])
+                    else:
+                        norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
+                        logp_loc_giv_nodamage = mvn.logpdf(logit(targets.T / norma), mean=nx / 2.0, cov=10000)
     
-                    p_damage_loc = p_loc_giv_damage * self.z0
-                    p_nodamage_loc = p_loc_giv_nodamage * (1.0 - self.z0)
+                    p_damage = (1.0 + posinputdata.shape[1]) / (2.0 + posinputdata.shape[1] + neginputdata.shape[1])
+                    p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
+                    p_nodamage_loc = np.exp(logp_loc_giv_nodamage + np.log(1 - p_damage))
                     p_damage_giv_loc  = p_damage_loc / (p_damage_loc + p_nodamage_loc)
                     return p_damage_giv_loc
-    
-                # Repeat for each of the test datasets
-                results['KDE'] = kde_prediction(targetsx, targetsy)
+        
+                targets_single_arr = np.concatenate(( targetsx.reshape(1, len(targetsx)), targetsy.reshape(1, len(targetsy)) ))
+                results['KDE'] = kde_prediction(targets_single_arr)
                 densityresults['KDE'] = results['KDE']
-                #results['KDE']['grid'] = kde_prediction(gridoutputx, gridoutputy)
-    
+                densitySD['KDE'] = np.zeros(len(results['KDE']))
+                
                 logging.info("KDE complete.")
     
             # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
@@ -160,41 +156,45 @@ class Tester(object):
                 logging.info("Using a density GP without BCC...")
                 # Get values for training points by taking frequencies -- only one report at each location, so give 1 for
                 # positive reports, 0 otherwise
-                ls_initial = [2, 10, 50, 100]
+                if not np.any(self.ls_initial) and self.optimise:
+                    ls_initial = [2, 10, 50, 100]
+                else:
+                    ls_initial = [self.ls_initial]
                 nlml = np.inf
                 gpgrid_opt = None
-                #chosen_i = 0
-                for i in range(len(ls_initial)):
-                    rate_ls = 2.0 / ls_initial[i]
+                for ls in ls_initial:
+                    rate_ls = 2.0 / ls
                     self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_ls=2.0, rate_ls=rate_ls)
-                    self.gpgrid.verbose = False    
+                    self.gpgrid.verbose = False
                     self.gpgrid.p_rep = 0.9
-                    self.gpgrid.optimize([reportsx, reportsy], 
-                        np.concatenate((posreports[:,np.newaxis], (posreports+negreports)[:,np.newaxis]), axis=1), maxfun=100)
-                    if self.gpgrid.nlml < nlml:
-                        nlml = self.gpgrid.nlml
-                        gpgrid_opt = self.gpgrid
-                        #chosen_i = i
-                ls_initial = gpgrid_opt.ls[0]
-                self.gpgrid = gpgrid_opt
+                    
+                    if self.optimise:                    
+                        self.gpgrid.optimize([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
+                                                       (posreports+negreports)[:,np.newaxis]), axis=1), maxfun=100)
+                        if self.gpgrid.nlml < nlml:
+                            nlml = self.gpgrid.nlml
+                            gpgrid_opt = self.gpgrid                        
+                    else:
+                        self.gpgrid.fit([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
+                                                       (posreports+negreports)[:,np.newaxis]), axis=1) )
+
+                if self.ls_initial==0:
+                    self.ls_initial = gpgrid_opt.ls[0]
+                if self.optimise:
+                    self.gpgrid = gpgrid_opt
     
-                gp_preds, _ = self.gpgrid.predict([targetsx, targetsy])
+                gp_preds, gp_var = self.gpgrid.predict([targetsx, targetsy], variance_method='sample')
                 results['GP'] = gp_preds
                 densityresults['GP'] = gp_preds
-                #results['Train_GP_on_Freq']['grid'] = self.gpgrid.predict([gridoutputx, gridoutputy]).reshape(nx, ny)
-            else:
-                ls_initial = nx
+                densitySD['GP'] = np.sqrt(gp_var)
+            elif not np.any(self.ls_initial):
+                self.ls_initial = nx
                 
-            # Set bounds on the starting length scale
-            if ls_initial < 1:
-                ls_initial = 1.0
-            elif ls_initial > 5 * nx:
-                ls_initial = 5 * nx
-            logging.info("Chosen ls_initial=%.2f" % ls_initial)
+            logging.info("Chosen self.ls_initial=%.2f" % self.ls_initial)
                 
-            # default hyperparameter initialisation points for all the GPs used below
+            # default hyper-parameter initialisation points for all the GPs used below
             shape_ls = 2.0
-            rate_ls = shape_ls / ls_initial
+            rate_ls = shape_ls / self.ls_initial
     
             # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
             if 'IBCC+GP' in self.methods:
@@ -203,6 +203,10 @@ class Tester(object):
                 logging.info("Running separate IBCC and GP...")
         
                 def train_gp_on_ibcc_output(opt_nx, opt_ny):
+                    # set the initial length scale according to the grid size
+                    ls_initial = (self.ls_initial / float(nx)) * opt_nx
+                    rate_ls = shape_ls / ls_initial
+                    
                     # run standard IBCC
                     self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls)
                     self.gpgrid2.verbose = False # use this verbose flag for this whole method
@@ -239,7 +243,10 @@ class Tester(object):
                     bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(opt_nx, opt_ny)), 1]
     
                     # use IBCC output to train GP
-                    self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100)
+                    if self.optimise:
+                        self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100)
+                    else:
+                        self.gpgrid2.fit([obsx, obsy], bcc_pred)
                     pT, _ = self.gpgrid2.predict([reportsx_grid,  reportsy_grid]) # use the report locations
                     pT = pT[np.newaxis, :]
                     ls = self.gpgrid2.ls
@@ -265,60 +272,54 @@ class Tester(object):
                         logging.debug("NLML: " + str(nlml))
                     return nlml
                 
-                nunique_x = np.unique(reportsx).shape[0]
-                nunique_y = np.unique(reportsy).shape[0]
                 # try different levels of separation with on average 3 data points per grid square, 5 per grid square and 10 per grid square.
-                topx = 0
-                topy = 0
                 lowest_nlml = np.inf
-                for grouping in np.arange(1, 11, dtype=float) * 2:
-                    gridx = int(np.ceil(nunique_x / grouping) )
-                    gridy = int(np.ceil(nunique_y / grouping) )
-                    nlml = train_gp_on_ibcc_output(gridx, gridy)#initialguess, maxfun=20, full_output=False, xtol=10, ftol=1)
+                gridsizes = []
+                for grouping in np.arange(1, 11, dtype=float) * 10:
+                    gridsize = int(np.ceil(len(reportsx) / grouping) )
+                    gridsizes.append(gridsize)
+                gridsizes = np.unique(gridsizes) # remove duplicates caused by rounding
+                
+                for gridsize in gridsizes:
+                    nlml = train_gp_on_ibcc_output(gridsize, gridsize)
                     logging.debug("NLML = %.2f, lowest so far = %.2f" % (nlml, lowest_nlml))
                     if nlml < lowest_nlml:
-                        topx = gridx
-                        topy = gridy
+                        bestsize = gridsize
                         lowest_nlml = nlml
-                logging.info("Best grid size found so far: %i %i" % (topx, topy))
-                train_gp_on_ibcc_output(topx, topy)
+                logging.info("Best grid size found so far: %i" % (bestsize))
+                train_gp_on_ibcc_output(bestsize, bestsize)
                 #fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
                 # use optimized grid size to make predictions
-                targetsx_grid = (targetsx * topx/nx).astype(int)
-                targetsy_grid = (targetsy * topy/ny).astype(int)
-                gp_preds, _ = self.gpgrid2.predict([targetsx_grid, targetsy_grid])
+                targetsx_grid = (targetsx * bestsize / float(nx)).astype(int)
+                targetsy_grid = (targetsy * bestsize / float(ny)).astype(int)
+                gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
                 results['IBCC+GP'] = gp_preds
                 densityresults['IBCC+GP'] = gp_preds
-                #gp_preds = self.gpgrid2.predict([gridoutputx, gridoutputy])
-                #results['IBCC_then_GP']['grid'] = gp_preds.reshape(nx, ny)
+                densitySD['IBCC+GP'] = gp_var
     
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
                 #HEATMAPBCC OBJECT
-                self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+                self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_ls=shape_ls, 
+                                                  rate_ls=rate_ls, force_update_all_points=True)
                 self.heatmapcombiner.min_iterations = 4
                 self.heatmapcombiner.max_iterations = 200
                 self.heatmapcombiner.verbose = False
                 self.heatmapcombiner.uselowerbound = True
-                if self.heatmapcombiner.uselowerbound:
-                    self.heatmapcombiner.conv_threshold = 1
-                else:
-                    self.heatmapcombiner.conv_threshold = 0.01            
+                self.heatmapcombiner.conv_threshold = 0.01
                 
                 logging.info("Running HeatmapBCC...")
                 # to do:
                 # make sure optimise works
                 # make sure the optimal hyper-parameters are passed to the next iteration
-                self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
-                self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=True)
+                #self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
+                self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
     
-                bcc_pred, bcc_density, _ = self.heatmapcombiner.predict(targetsx, targetsy)
+                bcc_pred, bcc_density, bcc_var = self.heatmapcombiner.predict(targetsx, targetsy)
                 results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
                 densityresults['HeatmapBCC'] = bcc_density[1, :]
+                densitySD['HeatmapBCC'] = np.sqrt(bcc_var[1, :])
     
-                #_, bcc_pred = self.heatmapcombiner.predict_grid() # take the second argument to get the density rather than state at observed points
-                #results['heatmapbcc']['grid'] = bcc_pred[1, :]
-                
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
     
@@ -330,9 +331,6 @@ class Tester(object):
                 pred = results[method]
                 est_density = densityresults[method]
     
-                mce = []
-                rmse = []
-                auc = []
                 best_thresholds = []
                 mced = []
                 rmsed = []
@@ -341,27 +339,21 @@ class Tester(object):
                 testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
                 testresults[testresults==1] = 0.999999
 
-                mce_ts = - np.sum(gold_labels * np.log(testresults)) - np.sum((1-gold_labels) * np.log(1 - testresults))
-                mce_ts = mce_ts / float(len(gold_labels))
-                mce.append( mce_ts )
+                # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
+                mce = - np.sum(gold_labels * np.log(testresults)) - np.sum((1-gold_labels) * np.log(1 - testresults))
+                mce = mce / float(len(gold_labels))
                 
-                rmse.append( np.sqrt( np.sum((testresults - gold_labels)**2) / float(len(gold_labels)) ) )
+                rmse = np.sqrt( np.sum((testresults - gold_labels)**2) / float(len(gold_labels)) )
 
-                auc_by_class, _, best_thresholds_ts = evaluator.eval_auc(testresults, gold_labels)
-                auc.append( np.sum(np.bincount(gold_labels) * auc_by_class) / len(gold_labels) )
-                best_thresholds.append( np.sum(np.bincount(gold_labels) * best_thresholds_ts) / len(gold_labels))
-    
-                mce_mean = np.sum(mce) / float(len(gold_labels))
-                rmse_mean = np.sum(rmse) / float(len(gold_labels))
-                auc_mean = np.sum(auc) / float(len(gold_labels))
-    
-                mce_var = np.sum((mce - mce_mean)**2) / float(len(gold_labels))
-                rmse_var = np.sum((rmse - rmse_mean)**2) / float(len(gold_labels))
-                auc_var = np.sum((auc - auc_mean)**2) / float(len(gold_labels))
-    
-                print "Cross entropy (individual data points): %.4f with SD %.4f" % (mce_mean, mce_var**0.5)
-                print "RMSE (individual data points): %.4f with SD %.4f" % (rmse_mean, rmse_var**0.5)
-                print "AUC (individual data points): %.4f with SD %.4f; best threshold %.2f" % (auc_mean, auc_var**0.5, np.sum(best_thresholds) / float(len(gold_labels)) )
+                auc_by_class, _, _ = evaluator.eval_auc(testresults, gold_labels)
+                if testresults.ndim == 2:
+                    auc = np.sum(np.bincount(gold_labels) * auc_by_class) / len(gold_labels)
+                else:
+                    auc = auc_by_class
+        
+                print "Cross entropy (individual data points): %.4f" % (mce)
+                print "RMSE (individual data points): %.4f" % (rmse)
+                print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(gold_labels)) )
     
                 # assume gold density and est density have 1 row for each class
                 est_density = est_density.flatten()
@@ -382,25 +374,17 @@ class Tester(object):
                 print "Kendall's Tau (density estimation): %.4f " % tau
     
                 if method not in self.auc_all:
-                    self.auc_all[method] = [auc_mean]
-                    self.rmse_all[method] = [rmse_mean]
-                    self.mce_all[method] = [mce_mean]
-    
-                    self.auc_all_var[method] = [auc_var]
-                    self.rmse_all_var[method] = [rmse_var]
-                    self.mce_all_var[method] = [mce_var]
+                    self.auc_all[method] = [auc]
+                    self.rmse_all[method] = [rmse]
+                    self.mce_all[method] = [mce]
     
                     self.tau_all[method] = [tau]
                     self.rmsed_all[method] = [rmsed]
                     self.mced_all[method] = [mced]
                 else:
-                    self.auc_all[method].append(auc_mean)
-                    self.rmse_all[method].append(rmse_mean)
-                    self.mce_all[method].append(mce_mean)
-    
-                    self.auc_all_var[method].append(auc_var)
-                    self.rmse_all_var[method].append(rmse_var)
-                    self.mce_all_var[method].append(mce_var)
+                    self.auc_all[method].append(auc)
+                    self.rmse_all[method].append(rmse)
+                    self.mce_all[method].append(mce)
     
                     self.tau_all[method].append(tau)
                     self.rmsed_all[method].append(rmsed)
@@ -409,6 +393,7 @@ class Tester(object):
             # set up next iteration
             self.results_all[Nlabels] = results
             self.densityresults_all[Nlabels] = densityresults
+            self.densitySD_all[Nlabels] = densitySD
             if Nlabels==C_all.shape[0]:
                 break
             elif C_all.shape[0]-Nlabels<100:
@@ -421,13 +406,11 @@ class Tester(object):
         if not os.path.exists(self.outputdir):
             os.mkdir(self.outputdir)
         np.save(self.outputdir + "results.npy", self.results_all)
-        np.save(self.outputdir + "density_results.npy", self.results_all)
+        np.save(self.outputdir + "density_results.npy", self.densityresults_all)
+        np.save(self.outputdir + "density_SD.npy", self.densitySD_all)
         np.save(self.outputdir + "rmse.npy", self.rmse_all)
         np.save(self.outputdir + "auc.npy", self.auc_all)
         np.save(self.outputdir + "mce.npy", self.mce_all)
-        np.save(self.outputdir + "rmse_var.npy", self.rmse_all_var)
-        np.save(self.outputdir + "auc_var.npy", self.auc_all_var)
-        np.save(self.outputdir + "mce_var.npy", self.mce_all_var)
         np.save(self.outputdir + "rmsed.npy", self.rmsed_all)
         np.save(self.outputdir + "tau.npy", self.tau_all)
         np.save(self.outputdir + "mced.npy", self.mced_all)
