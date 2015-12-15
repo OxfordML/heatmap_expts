@@ -122,7 +122,7 @@ def run_experiments():
 def dataset_location(experiment_label, dataset_label):
     # ID of the data set
     #output 5 was most working one so far
-    outputdir = "/homes/49/edwin/robots_code/heatmap_expts/data/" + experiment_label + '/'
+    outputdir = "./data/" + experiment_label + '/'
     
     if not os.path.isdir(outputdir):
         os.mkdir(outputdir)
