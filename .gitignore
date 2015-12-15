@@ -1,2 +1,11 @@
 *.py~
 *.pyc
+*.profle
+gen_synthetic.profile
+gs.profile
+data/cicada-edwin.csv
+data/exported_ushahidi.csv
+data/haiti_unosat_target_grid.npy
+data/haiti_unosat_target_list.npy
+data/old
+data/output_cluslocs1.00_bias_test1

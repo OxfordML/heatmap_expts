@@ -26,11 +26,12 @@ if __name__ == '__main__':
     Nreps_iter = np.arange(Nsteps) * Nrep_inc + Nreps_initial
     
     Nreps = gen_synthetic.Nreports#1000 
+    experiment_label = gen_synthetic.expt_label_template % gen_synthetic.cluster_spreads[0]
     
     for d in range(nruns):
         for p_idx, p in enumerate(weak_proportions):
             dataset_label = "d%i" % d
-            outputdir, data_outputdir = gen_synthetic.dataset_location(dataset_label)
+            outputdir, data_outputdir = gen_synthetic.dataset_location(experiment_label, dataset_label)
             # load the ground truth
             f = np.load(data_outputdir + "f_all.npy")
             x = np.load(data_outputdir + "x_all.npy")
@@ -42,7 +43,7 @@ if __name__ == '__main__':
             # Load the posteriors
             dataset_label = "p%i_d%i" % (p_idx, d)
             logging.info("Loading results for proportion %i, Dataset %d" % (p_idx, d))
-            outputdir, _ = gen_synthetic.dataset_location(dataset_label)
+            outputdir, _ = gen_synthetic.dataset_location(experiment_label, dataset_label)
             post = np.load(outputdir + "density_results.npy").item() # posterior densities
             sd = np.load(outputdir + "density_SD.npy").item() # posterior standard deviations of density
             

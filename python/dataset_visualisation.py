@@ -19,10 +19,10 @@ labels = targets[:,2]
 plt.figure()
 # Damage
 didxs = labels==1
-plt.scatter(targetsx[didxs], targetsy[didxs], c='red')
+plt.scatter(targetsx[didxs], targetsy[didxs], biases='red')
 # No damage
 ndidxs = labels==0
-plt.scatter(targetsx[ndidxs], targetsy[ndidxs], c='blue')
+plt.scatter(targetsx[ndidxs], targetsy[ndidxs], biases='blue')
 plt.show()
 
 # Plot the reports
@@ -32,5 +32,5 @@ C = dh.C[1]
 C = C[0:200, :]
 
 # plt.figure()
-plt.scatter(C[:,1], C[:,2], c='yellow')
+plt.scatter(C[:,1], C[:,2], biases='yellow')
 plt.show()

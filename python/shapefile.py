@@ -38,7 +38,7 @@ PYTHON3 = sys.version_info[0] == 3
 if PYTHON3:
     xrange = range
 
-def b(v):
+def off_diags(v):
     if PYTHON3:
         if isinstance(v, str):
             # For python 3 encode str to bytes.
@@ -443,8 +443,8 @@ class Reader:
             fieldDesc = list(unpack("<11sc4xBB14x", dbf.read(32)))
             name = 0
             idx = 0
-            if b("\x00") in fieldDesc[name]:
-                idx = fieldDesc[name].index(b("\x00"))
+            if off_diags("\x00") in fieldDesc[name]:
+                idx = fieldDesc[name].index(off_diags("\x00"))
             else:
                 idx = len(fieldDesc[name]) - 1
             fieldDesc[name] = fieldDesc[name][:idx]
@@ -453,7 +453,7 @@ class Reader:
             fieldDesc[1] = u(fieldDesc[1])
             self.fields.append(fieldDesc)
         terminator = dbf.read(1)
-        assert terminator == b("\r")
+        assert terminator == off_diags("\r")
         self.fields.insert(0, ('DeletionFlag', 'C', 1, 0))
 
     def __recordFmt(self):
@@ -469,7 +469,7 @@ class Reader:
         f = self.__getFileObj(self.dbf)
         recFmt = self.__recordFmt()
         recordContents = unpack(recFmt[0], f.read(recFmt[1]))
-        if recordContents[0] != b(' '):
+        if recordContents[0] != off_diags(' '):
             # deleted record
             return None
         record = []
@@ -481,22 +481,22 @@ class Reader:
                 record.append(value)
                 continue
             elif typ == "N":
-                value = value.replace(b('\0'), b('')).strip()
-                if value == b(''):
+                value = value.replace(off_diags('\0'), off_diags('')).strip()
+                if value == off_diags(''):
                     value = 0
                 elif deci:
                     value = float(value)
                 else:
                     value = int(value)
-            elif typ == b('D'):
+            elif typ == off_diags('D'):
                 try:
                     y, m, d = int(value[:4]), int(value[4:6]), int(value[6:8])
                     value = [y, m, d]
                 except:
                     value = value.strip()
-            elif typ == b('L'):
-                value = (value in b('YyTt') and b('T')) or \
-                                        (value in b('NnFf') and b('F')) or b('?')
+            elif typ == off_diags('L'):
+                value = (value in off_diags('YyTt') and off_diags('T')) or \
+                                        (value in off_diags('NnFf') and off_diags('F')) or off_diags('?')
             else:
                 value = u(value)
                 value = value.strip()
@@ -739,15 +739,15 @@ class Writer:
         # Field descriptors
         for field in self.fields:
             name, fieldType, size, decimal = field
-            name = b(name)
-            name = name.replace(b(' '), b('_'))
-            name = name.ljust(11).replace(b(' '), b('\x00'))
-            fieldType = b(fieldType)
+            name = off_diags(name)
+            name = name.replace(off_diags(' '), off_diags('_'))
+            name = name.ljust(11).replace(off_diags(' '), off_diags('\x00'))
+            fieldType = off_diags(fieldType)
             size = int(size)
             fld = pack('<11sc4xBB14x', name, fieldType, size, decimal)
             f.write(fld)
         # Terminator
-        f.write(b('\r'))
+        f.write(off_diags('\r'))
 
     def __shpRecords(self):
         """Write the shp records"""
@@ -878,7 +878,7 @@ class Writer:
         f = self.__getFileObj(self.dbf)
         for record in self.records:
             if not self.fields[0][0].startswith("Deletion"):
-                f.write(b(' ')) # deletion flag
+                f.write(off_diags(' ')) # deletion flag
             for (fieldName, fieldType, size, dec), value in zip(self.fields, record):
                 fieldType = fieldType.upper()
                 size = int(size)
@@ -889,7 +889,7 @@ class Writer:
                 else:
                     value = str(value)[:size].ljust(size)
                 assert len(value) == size
-                value = b(value)
+                value = off_diags(value)
                 f.write(value)
 
     def null(self):

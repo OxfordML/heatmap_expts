@@ -40,7 +40,8 @@ from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn
 
 class Tester(object):
         
-    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, ls_initial=0, optimise=True, clusteridxs_all=None):
+    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, ls_initial=0, optimise=True, 
+                 clusteridxs_all=None, verbose=False):
         
         # Controls whether we optimise hyperparameters, including length scale
         self.optimise = optimise
@@ -73,6 +74,8 @@ class Tester(object):
         self.heatmapcombiner = None
         self.gpgrid2 = None
         self.ibcc_combiner = None
+        
+        self.verbose = verbose
     
     def run_tests(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
 
@@ -150,7 +153,7 @@ class Tester(object):
                 
                 logging.info("KDE complete.")
     
-            # TRAIN GP WITHOUT BCC ---------------------------------------------------------------------------------------------
+            # TRAIN GP WITHOUT BCC. Train using sample of ground truth density (not reports) to test if GP works--------            
             if 'GP' in self.methods:      
                 
                 logging.info("Using a density GP without BCC...")
@@ -165,8 +168,8 @@ class Tester(object):
                 for ls in ls_initial:
                     rate_ls = 2.0 / ls
                     self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_ls=2.0, rate_ls=rate_ls)
-                    self.gpgrid.verbose = False
-                    self.gpgrid.p_rep = 0.9
+                    self.gpgrid.verbose = self.verbose
+#                     self.gpgrid.p_rep = 0.9
                     
                     if self.optimise:                    
                         self.gpgrid.optimize([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
@@ -209,10 +212,10 @@ class Tester(object):
                     
                     # run standard IBCC
                     self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls)
-                    self.gpgrid2.verbose = False # use this verbose flag for this whole method
+                    self.gpgrid2.verbose = self.verbose
                     self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)                
                     self.ibcc_combiner.clusteridxs_alpha0 = clusteridxs
-                    self.ibcc_combiner.verbose = self.gpgrid2.verbose
+                    self.ibcc_combiner.verbose = self.verbose
                     self.ibcc_combiner.min_iterations = 5
                     self.ibcc_combiner.max_iterations = 200
                     self.ibcc_combiner.conv_threshold = 0.1    
@@ -275,7 +278,8 @@ class Tester(object):
                 # try different levels of separation with on average 3 data points per grid square, 5 per grid square and 10 per grid square.
                 lowest_nlml = np.inf
                 gridsizes = []
-                for grouping in np.arange(1, 11, dtype=float) * 10:
+                Nper_grid_sq = np.arange(1, 11, dtype=float) * 2
+                for grouping in Nper_grid_sq:
                     gridsize = int(np.ceil(len(reportsx) / grouping) )
                     gridsizes.append(gridsize)
                 gridsizes = np.unique(gridsizes) # remove duplicates caused by rounding
@@ -304,9 +308,8 @@ class Tester(object):
                                                   rate_ls=rate_ls, force_update_all_points=True)
                 self.heatmapcombiner.min_iterations = 4
                 self.heatmapcombiner.max_iterations = 200
-                self.heatmapcombiner.verbose = False
+                self.heatmapcombiner.verbose = self.verbose
                 self.heatmapcombiner.uselowerbound = True
-                self.heatmapcombiner.conv_threshold = 0.01
                 
                 logging.info("Running HeatmapBCC...")
                 # to do:
@@ -314,6 +317,7 @@ class Tester(object):
                 # make sure the optimal hyper-parameters are passed to the next iteration
                 #self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
                 self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
+                logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
     
                 bcc_pred, bcc_density, bcc_var = self.heatmapcombiner.predict(targetsx, targetsy)
                 results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
