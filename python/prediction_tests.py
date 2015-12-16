@@ -93,7 +93,7 @@ class Tester(object):
     
             results = {}
             densityresults = {}
-            densitySD = {}
+            density_var = {}
     
             # indicator array to show whether reports are positive or negative
             posreports = (C[:, 3] == 1).astype(float)
@@ -149,7 +149,7 @@ class Tester(object):
                 targets_single_arr = np.concatenate(( targetsx.reshape(1, len(targetsx)), targetsy.reshape(1, len(targetsy)) ))
                 results['KDE'] = kde_prediction(targets_single_arr)
                 densityresults['KDE'] = results['KDE']
-                densitySD['KDE'] = np.zeros(len(results['KDE']))
+                density_var['KDE'] = np.zeros(len(results['KDE']))
                 
                 logging.info("KDE complete.")
     
@@ -185,11 +185,11 @@ class Tester(object):
                     self.ls_initial = gpgrid_opt.ls[0]
                 if self.optimise:
                     self.gpgrid = gpgrid_opt
-    
+                logging.debug("GP found output scale %.5f" % self.gpgrid.s)
                 gp_preds, gp_var = self.gpgrid.predict([targetsx, targetsy], variance_method='sample')
                 results['GP'] = gp_preds
                 densityresults['GP'] = gp_preds
-                densitySD['GP'] = np.sqrt(gp_var)
+                density_var['GP'] = gp_var
             elif not np.any(self.ls_initial):
                 self.ls_initial = nx
                 
@@ -250,15 +250,15 @@ class Tester(object):
                         self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100)
                     else:
                         self.gpgrid2.fit([obsx, obsy], bcc_pred)
-                    pT, _ = self.gpgrid2.predict([reportsx_grid,  reportsy_grid]) # use the report locations
-                    pT = pT[np.newaxis, :]
+                    pT, _ = self.gpgrid2.predict([reportsx_grid,  reportsy_grid], variance_method='sample') # use the report locations
+                    pT = np.concatenate((pT.T, 1-pT.T), axis=0)
                     ls = self.gpgrid2.ls
                     if self.gpgrid2.verbose:
                         logging.debug("fmin param value for lengthscale: %f, %f" % (ls[0], ls[1]))
                     
                     self.ibcc_combiner.lnjoint(alldata=True)
                     lnpCT = np.sum(pT * (self.ibcc_combiner.lnPi[:, C_flat[:, 2].astype(int), C_flat[:, 0].astype(int)] 
-                                         + self.ibcc_combiner.lnkappa))            
+                                         + self.ibcc_combiner.lnkappa))
                     lnpPi = self.ibcc_combiner.post_lnpi()
                     lnpKappa = self.ibcc_combiner.post_lnkappa()
                     EEnergy = lnpCT + lnpPi + lnpKappa
@@ -286,7 +286,7 @@ class Tester(object):
                     gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
                     results['IBCC+GP_%i' % grouping] = gp_preds
                     densityresults['IBCC+GP_%i' % grouping] = gp_preds
-                    densitySD['IBCC+GP_%i' % grouping] = gp_var
+                    density_var['IBCC+GP_%i' % grouping] = gp_var
     
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
@@ -306,10 +306,10 @@ class Tester(object):
                 self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
                 logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
     
-                bcc_pred, bcc_density, bcc_var = self.heatmapcombiner.predict(targetsx, targetsy)
+                bcc_pred, rho_mean, rho_var = self.heatmapcombiner.predict(targetsx, targetsy)
                 results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
-                densityresults['HeatmapBCC'] = bcc_density[1, :]
-                densitySD['HeatmapBCC'] = np.sqrt(bcc_var[1, :])
+                densityresults['HeatmapBCC'] = rho_mean[1, :]
+                density_var['HeatmapBCC'] = rho_var[1, :]
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
@@ -321,6 +321,7 @@ class Tester(object):
                 print 'Results for %s with %i labels' % (method, Nlabels)
                 pred = results[method]
                 est_density = densityresults[method]
+                est_density_var = density_var[method]
     
                 best_thresholds = []
                 mced = []
@@ -351,8 +352,8 @@ class Tester(object):
                 est_density[est_density==0] = 0.0000001
                 est_density[est_density==1] = 0.9999999
     
-                mced = - np.sum(gold_density * np.log(est_density)) - np.sum((1-gold_density) * np.log(1-est_density))
-                mced = mced / float(len(gold_density))
+                mced = - np.sum(gold_density * np.log(est_density) + (1-gold_density) * np.log(1-est_density))
+                mced /= float(len(gold_density))
                 print "Cross entropy (density estimation): %.4f" % mced
     
                 rmsed = np.sqrt( np.sum((est_density - gold_density)**2) / float(len(gold_density)) )
@@ -384,7 +385,7 @@ class Tester(object):
             # set up next iteration
             self.results_all[Nlabels] = results
             self.densityresults_all[Nlabels] = densityresults
-            self.densitySD_all[Nlabels] = densitySD
+            self.densitySD_all[Nlabels] = density_var
             if Nlabels==C_all.shape[0]:
                 break
             elif C_all.shape[0]-Nlabels<100:

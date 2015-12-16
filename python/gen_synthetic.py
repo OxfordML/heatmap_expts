@@ -105,9 +105,9 @@ def run_experiments():
                 outputdir, data_outputdir = dataset_location(experiment_label, dataset_label) 
                 C = np.load(data_outputdir + "C.npy") 
                 
-                alpha0 = np.ones((J, 2, S)) + 10
+                alpha0 = np.ones((J, 2, S))
                 for s in range(S):
-                    alpha0[np.arange(J), np.arange(J), s] += 1
+                    alpha0[np.arange(J), np.arange(J), s] += 0.1
                 
                 # Run the tests with the current data set
                 tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, ls[0], optimise=False, 
@@ -150,7 +150,7 @@ def plot_density(nx, ny, x_all, y_all, f_all, title='ground truth density functi
     x_plot, y_plot = np.meshgrid(xi, yi)
     if apply_sigmoid:
         f_all = sigmoid(f_all)
-    z_plot = griddata(x_all.reshape(-1), y_all.reshape(-1), f_all, xi, yi)
+    z_plot = griddata(x_all.reshape(-1), y_all.reshape(-1), f_all.reshape(-1), xi, yi)
     
     if not ax:
         fig = plt.figure()
@@ -362,7 +362,7 @@ z0 = nu0[1] / np.sum(nu0)
 # just make different plots!
 
 # Number of datasets
-nruns = 25
+nruns = 1
 nsteps = 4
 
 # REPORTS
@@ -374,7 +374,7 @@ logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_in
 # REPORTERS
 S = 16 # number of reporters
 
-diag_reliable = 5000.0
+diag_reliable = 10.0
 off_diag_reliable = 1.0
 bias_reliable = np.zeros(J)
 
@@ -384,7 +384,7 @@ bias_reliable = np.zeros(J)
 #bias_weak = np.zeros(J)
 
 # For the unreliable workers to have bias
-diag_weak = 3.0
+diag_weak = 2.0
 off_diag_weak = 1.0
 bias_weak = np.zeros(J)
 bias_weak[0] = 10.0
@@ -403,7 +403,7 @@ cluster_spreads = [1.0, 0.5, 0.2] # spreads are multiplied by average distance b
 
 # MAIN SET OF SYNTHETIC DATA EXPERIMENTS ------------------------------------------------------------------------------
 if __name__ == '__main__':
-    run_experiments()
+    tester = run_experiments()
     
 # CASE STUDY: INTERPOLATING BETWEEN GOOD WORKERS ----------------------------------------------------------------------
 # Show an example where IBCC infers trusted workers, then interpolates between them, ignoring the reports from noisy 

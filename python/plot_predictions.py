@@ -20,7 +20,6 @@ if __name__ == '__main__':
     Nreports = gen_synthetic.Nreports 
     Nrep_inc = gen_synthetic.Nrep_inc
     Nsteps = gen_synthetic.nsteps
-    methods = gen_synthetic.methods
     
     # get a set of x-coordinates for the number of reports at each iteration
     Nreps_iter = np.arange(Nsteps) * Nrep_inc + Nreps_initial
@@ -46,6 +45,9 @@ if __name__ == '__main__':
             outputdir, _ = gen_synthetic.dataset_location(experiment_label, dataset_label)
             post = np.load(outputdir + "density_results.npy").item() # posterior densities
             sd = np.load(outputdir + "density_SD.npy").item() # posterior standard deviations of density
+            
+            methods = post[Nreps].keys()
+            
             
             fig = plt.figure()
             nrows = 2.0
