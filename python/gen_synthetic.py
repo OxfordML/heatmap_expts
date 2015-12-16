@@ -389,12 +389,11 @@ off_diag_weak = 1.0
 bias_weak = np.zeros(J)
 bias_weak[0] = 10.0
 
-nproportions = 5
+nproportions = 4
 if nproportions > S:
     nproportions = S
-weak_proportions = np.arange(nproportions, dtype=float)
-if np.max(weak_proportions > 0): 
-    weak_proportions /= np.max(weak_proportions)
+weak_proportions = np.arange(1.0, nproportions+1.0)
+weak_proportions /= nproportions
 
 expt_label_template = 'output_cluslocs%.2f_bias_test1'
 

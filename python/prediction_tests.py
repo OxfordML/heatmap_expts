@@ -276,30 +276,17 @@ class Tester(object):
                     return nlml
                 
                 # try different levels of separation with on average 3 data points per grid square, 5 per grid square and 10 per grid square.
-                lowest_nlml = np.inf
-                gridsizes = []
-                Nper_grid_sq = np.arange(1, 11, dtype=float) * 2
+                Nper_grid_sq = [3, 5, 10]
                 for grouping in Nper_grid_sq:
                     gridsize = int(np.ceil(len(reportsx) / grouping) )
-                    gridsizes.append(gridsize)
-                gridsizes = np.unique(gridsizes) # remove duplicates caused by rounding
-                
-                for gridsize in gridsizes:
                     nlml = train_gp_on_ibcc_output(gridsize, gridsize)
-                    logging.debug("NLML = %.2f, lowest so far = %.2f" % (nlml, lowest_nlml))
-                    if nlml < lowest_nlml:
-                        bestsize = gridsize
-                        lowest_nlml = nlml
-                logging.info("Best grid size found so far: %i" % (bestsize))
-                train_gp_on_ibcc_output(bestsize, bestsize)
-                #fmin_cobyla(train_gp_on_ibcc_output, initialguess, constraints, rhobeg=500, rhoend=100)
-                # use optimized grid size to make predictions
-                targetsx_grid = (targetsx * bestsize / float(nx)).astype(int)
-                targetsy_grid = (targetsy * bestsize / float(ny)).astype(int)
-                gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
-                results['IBCC+GP'] = gp_preds
-                densityresults['IBCC+GP'] = gp_preds
-                densitySD['IBCC+GP'] = gp_var
+                    logging.debug("NLML = %.2f" % nlml)
+                    targetsx_grid = (targetsx * gridsize / float(nx)).astype(int)
+                    targetsy_grid = (targetsy * gridsize / float(ny)).astype(int)
+                    gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
+                    results['IBCC+GP_%i' % grouping] = gp_preds
+                    densityresults['IBCC+GP_%i' % grouping] = gp_preds
+                    densitySD['IBCC+GP_%i' % grouping] = gp_var
     
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
