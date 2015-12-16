@@ -42,7 +42,7 @@ import os
 
 import matplotlib.pyplot as plt
 from matplotlib.mlab import griddata
-# from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import Axes3D
 
 RESET_ALL_DATA = False
 PLOT_SYNTH_DATA = False
@@ -111,7 +111,7 @@ def run_experiments():
                 
                 # Run the tests with the current data set
                 tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, ls[0], optimise=False, 
-                                                 verbose=True)            
+                                                 verbose=False)            
                 tester.run_tests(C, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, rho_test, Nreps_initial, 
                                  Nrep_inc)
                 if SAVE_RESULTS:
@@ -339,8 +339,8 @@ methods = [
            ]
 
 # GROUND TRUTH
-nx = 40.0
-ny = 40.0
+nx = 20.0
+ny = 20.0
 J = 2 # number of classes
 
 Ntest = nx*ny # no. points in the grid to test
@@ -351,7 +351,7 @@ print "length scale: "
 print ls
 
 # scale K toward more extreme probabilities
-output_scale = 1.0#logit(0.6)**2
+output_scale = 1.0 / logit(0.75)**2
 print "Output scale for ground truth: " + str(output_scale)
 
 nu0 = np.ones(J) # generate ground truth for the report locations
@@ -363,11 +363,11 @@ z0 = nu0[1] / np.sum(nu0)
 
 # Number of datasets
 nruns = 25
-nsteps = 6
+nsteps = 4
 
 # REPORTS
-Nreports = nx*ny #400 # total number of reports in complete data set
-Nreps_initial = 100#50 #50 # number of labels in first iteration data set. 
+Nreports = 500 #400 # total number of reports in complete data set
+Nreps_initial = 50#50 #50 # number of labels in first iteration data set. 
 Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
 logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_inc)
 
