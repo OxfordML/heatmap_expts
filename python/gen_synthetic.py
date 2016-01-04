@@ -105,13 +105,13 @@ def run_experiments():
                 outputdir, data_outputdir = dataset_location(experiment_label, dataset_label) 
                 C = np.load(data_outputdir + "C.npy") 
                 
-                alpha0 = np.ones((J, 2, S))
+                alpha0 = np.zeros((J, 2, S)) + alpha0_offdiag
                 for s in range(S):
-                    alpha0[np.arange(J), np.arange(J), s] += 0.1
-                
+                    alpha0[np.arange(J), np.arange(J), s] += alpha0_diag
+                                
                 # Run the tests with the current data set
-                tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, ls[0], optimise=False, 
-                                                 verbose=False)            
+                tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
+                                                 ls[0], optimise=False, verbose=False)            
                 tester.run_tests(C, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, rho_test, Nreps_initial, 
                                  Nrep_inc)
                 if SAVE_RESULTS:
@@ -332,9 +332,9 @@ logging.getLogger().setLevel(logging.DEBUG)
 # EXPERIMENT CONFIG ---------------------------------------------------------------------------------------------------
 
 methods = [
-           'KDE',
+           #'KDE',
            'GP',
-           'IBCC+GP',
+           #'IBCC+GP',
            'HeatmapBCC'
            ]
 
@@ -362,12 +362,12 @@ z0 = nu0[1] / np.sum(nu0)
 # just make different plots!
 
 # Number of datasets
-nruns = 25
+nruns = 1
 nsteps = 4
 
 # REPORTS
 Nreports = 500 #400 # total number of reports in complete data set
-Nreps_initial = 50#50 #50 # number of labels in first iteration data set. 
+Nreps_initial = 50 #50 # number of labels in first iteration data set. 
 Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
 logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_inc)
 
@@ -389,17 +389,23 @@ off_diag_weak = 1.0
 bias_weak = np.zeros(J)
 bias_weak[0] = 10.0
 
-nproportions = 4
+nproportions = 3
 if nproportions > S:
     nproportions = S
-weak_proportions = np.arange(1.0, nproportions+1.0)
-weak_proportions /= nproportions
+weak_proportions = np.arange(1.0, nproportions + 1)
+weak_proportions /= (nproportions + 1)
 
-expt_label_template = 'output_cluslocs%.2f_bias_test1'
+expt_label_template = 'output_cluslocs%.2f_bias_test3'
 
 # values to be used in each experiment
-cluster_spreads = [1.0, 0.5, 0.2] # spreads are multiplied by average distance between reports and a random 
+cluster_spreads = [0.2]#[1.0, 0.5, 0.2] # spreads are multiplied by average distance between reports and a random 
 #number between 0 and 1 with mean 0.5. So spread of 1 should give the default random placement of reports.
+
+shape_s0 = 10
+rate_s0 = 4 # chosen so that the prior expected precision is 2.58, corresponding to std of a beta-distributed variable
+# with hyper-parameters 5, 5. 
+alpha0_offdiag = 1
+alpha0_diag = 2
 
 # MAIN SET OF SYNTHETIC DATA EXPERIMENTS ------------------------------------------------------------------------------
 if __name__ == '__main__':

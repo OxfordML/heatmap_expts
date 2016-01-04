@@ -36,18 +36,21 @@ from ibccperformance import Evaluator
 from ibcc import IBCC
 from gpgrid import GPGrid
 from scipy.sparse import coo_matrix
-from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn
+from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn, beta
 
 class Tester(object):
         
-    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, ls_initial=0, optimise=True, 
-                 clusteridxs_all=None, verbose=False):
+    def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, shape_s0, rate_s0, ls_initial=0, 
+                 optimise=True, clusteridxs_all=None, verbose=False):
         
-        # Controls whether we optimise hyperparameters, including length scale
+        # Controls whether we optimise hyper-parameters, including length scale
         self.optimise = optimise
         
         # Set this to zero to use the optimal value from the standard GP
         self.ls_initial = ls_initial
+        
+        self.shape_s0 = shape_s0
+        self.rate_s0 = rate_s0
         
         self.outputdir = outputdir
         self.methods = methods
@@ -61,7 +64,7 @@ class Tester(object):
 
         self.results_all = {}
         self.densityresults_all = {}
-        self.densitySD_all = {}
+        self.densityVar_all = {}
         self.auc_all = {}
         self.mce_all = {}
         self.rmse_all = {}
@@ -167,7 +170,8 @@ class Tester(object):
                 gpgrid_opt = None
                 for ls in ls_initial:
                     rate_ls = 2.0 / ls
-                    self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_ls=2.0, rate_ls=rate_ls)
+                    self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, shape_ls=2.0, 
+                                         rate_ls=rate_ls)
                     self.gpgrid.verbose = self.verbose
 #                     self.gpgrid.p_rep = 0.9
                     
@@ -211,7 +215,8 @@ class Tester(object):
                     rate_ls = shape_ls / ls_initial
                     
                     # run standard IBCC
-                    self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_ls=shape_ls, rate_ls=rate_ls)
+                    self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
+                                           shape_ls=shape_ls, rate_ls=rate_ls)
                     self.gpgrid2.verbose = self.verbose
                     self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)                
                     self.ibcc_combiner.clusteridxs_alpha0 = clusteridxs
@@ -291,8 +296,8 @@ class Tester(object):
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
                 #HEATMAPBCC OBJECT
-                self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_ls=shape_ls, 
-                                                  rate_ls=rate_ls, force_update_all_points=True)
+                self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
+                              rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
                 self.heatmapcombiner.min_iterations = 4
                 self.heatmapcombiner.max_iterations = 200
                 self.heatmapcombiner.verbose = self.verbose
@@ -306,7 +311,7 @@ class Tester(object):
                 self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
                 logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
     
-                bcc_pred, rho_mean, rho_var = self.heatmapcombiner.predict(targetsx, targetsy)
+                bcc_pred, rho_mean, rho_var = self.heatmapcombiner.predict(targetsx, targetsy, variance_method='sample')
                 results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
                 densityresults['HeatmapBCC'] = rho_mean[1, :]
                 density_var['HeatmapBCC'] = rho_var[1, :]
@@ -321,7 +326,7 @@ class Tester(object):
                 print 'Results for %s with %i labels' % (method, Nlabels)
                 pred = results[method]
                 est_density = densityresults[method]
-                est_density_var = density_var[method]
+                est_density_var = density_var[method].flatten()
     
                 best_thresholds = []
                 mced = []
@@ -352,8 +357,7 @@ class Tester(object):
                 est_density[est_density==0] = 0.0000001
                 est_density[est_density==1] = 0.9999999
     
-                mced = - np.sum(gold_density * np.log(est_density) + (1-gold_density) * np.log(1-est_density))
-                mced /= float(len(gold_density))
+                mced = nlpd_beta(gold_density, est_density, est_density_var) 
                 print "Cross entropy (density estimation): %.4f" % mced
     
                 rmsed = np.sqrt( np.sum((est_density - gold_density)**2) / float(len(gold_density)) )
@@ -385,7 +389,7 @@ class Tester(object):
             # set up next iteration
             self.results_all[Nlabels] = results
             self.densityresults_all[Nlabels] = densityresults
-            self.densitySD_all[Nlabels] = density_var
+            self.densityVar_all[Nlabels] = density_var
             if Nlabels==C_all.shape[0]:
                 break
             elif C_all.shape[0]-Nlabels<100:
@@ -399,7 +403,7 @@ class Tester(object):
             os.mkdir(self.outputdir)
         np.save(self.outputdir + "results.npy", self.results_all)
         np.save(self.outputdir + "density_results.npy", self.densityresults_all)
-        np.save(self.outputdir + "density_SD.npy", self.densitySD_all)
+        np.save(self.outputdir + "density_var.npy", self.densityVar_all)
         np.save(self.outputdir + "rmse.npy", self.rmse_all)
         np.save(self.outputdir + "auc.npy", self.auc_all)
         np.save(self.outputdir + "mce.npy", self.mce_all)
@@ -409,3 +413,15 @@ class Tester(object):
         
     def save_self(self):
         np.save(self.outputdir + "tester.npy", self)
+        
+def nlpd_beta(gold, est_mean, est_var):
+    '''
+    This should be the same as cross entropy. Gives the negative log probability density of a ground-truth density value
+    according to a beta distribution with given mean and variance.
+    '''    
+    a_plus_b = 1.0 / est_var * est_mean * (1-est_mean) - 1
+    a = est_mean * a_plus_b
+    b = (1-est_mean) * a_plus_b
+    
+    nlpd = np.sum(- beta.logpdf(gold, a, b)) 
+    return nlpd / len(gold) # we return the mean per data point
