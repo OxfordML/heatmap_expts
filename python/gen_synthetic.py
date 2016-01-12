@@ -44,13 +44,117 @@ import matplotlib.pyplot as plt
 from matplotlib.mlab import griddata
 from mpl_toolkits.mplot3d import Axes3D
 
+# HELPER FUNCTIONS -------------------------------------------------------------------------------------------------------
+
+def sq_exp_cov(xvals, yvals, ls):
+    Kx = np.exp( -xvals**2 / ls[0] )
+    Ky = np.exp( -yvals**2 / ls[1] )
+    K = Kx * Ky
+    return K
+
+def sigmoid(f):
+    g = 1/(1+np.exp(-f))
+    return g
+
+def logit(g):
+    f = -np.log(1/g - 1)
+    return f
+
+# EXPERIMENT CONFIG ---------------------------------------------------------------------------------------------------
+
 RESET_ALL_DATA = False
 PLOT_SYNTH_DATA = False
 SAVE_RESULTS = True
 
-# FUNCTIONS -------------------------------------------------------------------------------------------------------
+methods = [
+           'KDE',
+           'GP',
+           'IBCC+GP',
+           'HeatmapBCC'
+           ]
+
+# GROUND TRUTH
+nx = 20.0
+ny = 20.0
+J = 2 # number of classes
+
+Ntest = nx*ny # no. points in the grid to test
+
+ls = 40.0 #nx #np.random.randint(1, nx * 2, 1)
+ls = np.zeros(2) + ls
+print "length scale: "
+print ls
+
+# scale K toward more extreme probabilities
+output_scale = 1.0 / logit(0.75)**2
+
+nu0 = np.ones(J) # generate ground truth for the report locations
+z0 = nu0[1] / np.sum(nu0)
+
+# # VARYING NOISE TESTS -------------------------------------------------------------------------------------------
+# This will also test sparseness so we don't need to run the algorithms again to show the effect of sparseness,
+# just make different plots!
+
+# Number of datasets
+nruns = 25
+nsteps = 4
+
+# REPORTS
+Nreports = 500 #400 # total number of reports in complete data set
+Nreps_initial = 50 #50 # number of labels in first iteration data set. 
+Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
+logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_inc)
+
+# REPORTERS
+S = 16 # number of reporters
+
+diag_reliable = 10.0
+off_diag_reliable = 1.0
+bias_reliable = np.zeros(J)
+
+# For the unreliable workers to have white noise
+#diag_weak = 5000.0
+#off_diag_weak = 5000.0
+#bias_weak = np.zeros(J)
+
+# For the unreliable workers to have bias
+diag_weak = 2.0
+off_diag_weak = 1.0
+bias_weak = np.zeros(J)
+bias_weak[0] = 10.0
+
+nproportions = 3
+if nproportions > S:
+    nproportions = S
+weak_proportions = np.arange(1.0, nproportions + 1)
+weak_proportions /= (nproportions + 1)
+
+expt_label_template = 'output_cluslocs%.2f_bias_grid1'
+
+# values to be used in each experiment
+cluster_spreads = [0.2]#[1.0, 0.5, 0.2] # spreads are multiplied by average distance between reports and a random 
+#number between 0 and 1 with mean 0.5. So spread of 1 should give the default random placement of reports.
+
+shape_s0 = 10
+rate_s0 = 4 # chosen so that the prior expected precision is 2.58, corresponding to std of a beta-distributed variable
+# with hyper-parameters 5, 5. 
+alpha0_offdiag = 1
+alpha0_diag = 2
+
+# Flag indicates whether we should snap report locations to their nearest grid location.
+# Doing so means that we assume reports relate to the whole grid square, and that different sources relate to the same
+# t object. We could reduce problems with this discretization step if we use soft snapping based on distance.
+# When set to true, the model predicts the state of each grid location, and the latent density of states. Lots of 
+# reports at same place does not necessarily imply high density, which makes sense if there is only a single emergency. 
+# When set to false, the model predicts the density of reports at each location, if the reports were accurate,
+# and assumes that reports may relate to different events at the same location.   
+snap_to_grid = True
+
+# DATA GENERATION --------------------------------------------------------------------------------------------------
     
 def run_experiments():
+    print "Output scale for ground truth: " + str(output_scale)
+    
     for cluster_spread in cluster_spreads:
         
         experiment_label = expt_label_template % cluster_spread 
@@ -70,11 +174,12 @@ def run_experiments():
             
                 dataset_label = "d%i" % d
                 logging.info("Generating data/reloading old data for proportion %i, Dataset %d" % (p_idx, d))
-                xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA & (p_idx==0), Nreports, Ntest, ls, 
-                    experiment_label, dataset_label, 5, cluster_spread * nx / Nreports**0.5) # only reset on the first iteration
+                # only reset on the first iteration
+                xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA & (p_idx==0), nx, ny, Nreports, 
+                    Ntest, ls, snap_to_grid, experiment_label, dataset_label, 5, cluster_spread * nx / Nreports**0.5)
                 dataset_label = "p%i_d%i" % (p_idx, d)
                 gen_synth_reports(RESET_ALL_DATA, Nreports, diags, off_diags, biases, xreports, yreports, t_gold, 
-                    experiment_label, dataset_label)
+                                  snap_to_grid, experiment_label, dataset_label)
         
         # RUN TESTS -----------------------------------------------------------------------------------------------------------
         for p_idx, p in enumerate(weak_proportions):
@@ -169,7 +274,7 @@ def plot_report_histogram(reportsx, reportsy, reports, ax=None):
     x_plot, y_plot = np.meshgrid(xedges[:-1], yedges[:-1])
     ax.plot_surface(x_plot, y_plot, hist, cmap='Spectral', rstride=1, cstride=1)
 
-def gen_synth_ground_truth(reset_all_data, Nreports, Ntest, ls, experiment_label, dataset_label, 
+def gen_synth_ground_truth(reset_all_data, nx, ny, Nreports, Ntest, ls, snap_to_grid, experiment_label, dataset_label, 
                            mean_reps_per_cluster=1, clusterspread=0):
     '''
     Generate data.
@@ -219,6 +324,11 @@ def gen_synth_ground_truth(reset_all_data, Nreports, Ntest, ls, experiment_label
     ytest = np.tile(ytest, (1, Ntest))
     ytest = ytest.reshape(Ntest**2, 1)
         
+    if snap_to_grid:
+        # convert xreports and yreports to nearest grid locations.
+        xreports = np.round(xreports)
+        yreports = np.round(yreports)         
+        
     x_all = np.concatenate((xreports, xtest))
     y_all = np.concatenate((yreports, ytest))
         
@@ -241,6 +351,16 @@ def gen_synth_ground_truth(reset_all_data, Nreports, Ntest, ls, experiment_label
     
     # generate ground truth for the report locations
     t_gold = bernoulli.rvs(rho_rep)
+    if snap_to_grid:         
+        # find duplicate locations and use the first t_gold value for each.
+        for i in range(Nreports):
+            xi = xreports[i]
+            yi = yreports[i] # Geordie variable
+            
+            samex = np.argwhere(xreports==xi)[:, 0]
+            samexy = samex[yreports[samex, 0]==yi]
+            
+            t_gold[samexy] = t_gold[i]
 
     print "Fraction of positive training target points: %.3f" % (np.sum(t_gold) / float(len(t_gold)))
     
@@ -258,7 +378,7 @@ def gen_synth_ground_truth(reset_all_data, Nreports, Ntest, ls, experiment_label
     
     return xreports, yreports, t_gold
     
-def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, xreports, yreports, t_gold, 
+def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, xreports, yreports, t_gold, snap_to_grid,
                       experiment_label, dataset_label):
     
     _, data_outputdir = dataset_location(experiment_label, dataset_label)
@@ -296,26 +416,12 @@ def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, x
     print "Fraction of positive reports: %.3f" % (np.sum(reports) / float(len(reports)))
     
     if PLOT_SYNTH_DATA:
-        plot_report_histogram(xreports, yreports, reports)    
+        plot_report_histogram(xreports, yreports, reports)
     
     C = np.concatenate((reporter_ids, xreports, yreports, reports), axis=1)
     
     np.save(data_outputdir + "C.npy", C)
-    np.save(data_outputdir + "pi_all.npy", pi.swapaxes(0,1).reshape((J*2, S), order='F').T )# pi all. Flattened so     
-
-def sq_exp_cov(xvals, yvals, ls):
-    Kx = np.exp( -xvals**2 / ls[0] )
-    Ky = np.exp( -yvals**2 / ls[1] )
-    K = Kx * Ky
-    return K
-
-def sigmoid(f):
-    g = 1/(1+np.exp(-f))
-    return g
-
-def logit(g):
-    f = -np.log(1/g - 1)
-    return f
+    np.save(data_outputdir + "pi_all.npy", pi.swapaxes(0,1).reshape((J*2, S), order='F').T )# pi all.
 
 """
  TODO:
@@ -328,84 +434,6 @@ def logit(g):
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
-
-# EXPERIMENT CONFIG ---------------------------------------------------------------------------------------------------
-
-methods = [
-           #'KDE',
-           'GP',
-           #'IBCC+GP',
-           'HeatmapBCC'
-           ]
-
-# GROUND TRUTH
-nx = 20.0
-ny = 20.0
-J = 2 # number of classes
-
-Ntest = nx*ny # no. points in the grid to test
-
-ls = 40.0 #nx #np.random.randint(1, nx * 2, 1)
-ls = np.zeros(2) + ls
-print "length scale: "
-print ls
-
-# scale K toward more extreme probabilities
-output_scale = 1.0 / logit(0.75)**2
-print "Output scale for ground truth: " + str(output_scale)
-
-nu0 = np.ones(J) # generate ground truth for the report locations
-z0 = nu0[1] / np.sum(nu0)
-
-# # VARYING NOISE TESTS -------------------------------------------------------------------------------------------
-# This will also test sparseness so we don't need to run the algorithms again to show the effect of sparseness,
-# just make different plots!
-
-# Number of datasets
-nruns = 1
-nsteps = 4
-
-# REPORTS
-Nreports = 500 #400 # total number of reports in complete data set
-Nreps_initial = 50 #50 # number of labels in first iteration data set. 
-Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
-logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_inc)
-
-# REPORTERS
-S = 16 # number of reporters
-
-diag_reliable = 10.0
-off_diag_reliable = 1.0
-bias_reliable = np.zeros(J)
-
-# For the unreliable workers to have white noise
-#diag_weak = 5000.0
-#off_diag_weak = 5000.0
-#bias_weak = np.zeros(J)
-
-# For the unreliable workers to have bias
-diag_weak = 2.0
-off_diag_weak = 1.0
-bias_weak = np.zeros(J)
-bias_weak[0] = 10.0
-
-nproportions = 3
-if nproportions > S:
-    nproportions = S
-weak_proportions = np.arange(1.0, nproportions + 1)
-weak_proportions /= (nproportions + 1)
-
-expt_label_template = 'output_cluslocs%.2f_bias_test3'
-
-# values to be used in each experiment
-cluster_spreads = [0.2]#[1.0, 0.5, 0.2] # spreads are multiplied by average distance between reports and a random 
-#number between 0 and 1 with mean 0.5. So spread of 1 should give the default random placement of reports.
-
-shape_s0 = 10
-rate_s0 = 4 # chosen so that the prior expected precision is 2.58, corresponding to std of a beta-distributed variable
-# with hyper-parameters 5, 5. 
-alpha0_offdiag = 1
-alpha0_diag = 2
 
 # MAIN SET OF SYNTHETIC DATA EXPERIMENTS ------------------------------------------------------------------------------
 if __name__ == '__main__':

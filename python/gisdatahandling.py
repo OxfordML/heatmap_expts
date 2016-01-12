@@ -27,15 +27,15 @@ gridsizex = (maxlat - minlat) / nx
 gridsizey = (maxlon - minlon) / ny
 
 tgrid = np.zeros((nx,ny),dtype=np.float) # grid of target values starting from 0
-tgrid_totals = np.zeros((nx, ny), dtype=np.int)
+tgrid_totals = np.zeros((nx, ny), dtype=np.float)
 
 #Treat 0 as default if no shape with another attribute is found in that square.
 
-inputfname = "/home/edwin/Datasets/haiti_unosat/HTI_2010_shp/PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2"
-outfname_grid_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_grid.csv"
-outfname_grid_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_grid.npy"
-outfname_list_csv = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_list.csv"
-outfname_list_npy = "/home/edwin/Datasets/haiti_unosat/haiti_unosat_target_list.npy"  
+inputfname = "./data/PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2"
+outfname_grid_csv = "./data/haiti_unosat_target_grid.csv"
+outfname_grid_npy = "./data/haiti_unosat_target_grid.npy"
+outfname_list_csv = "./data/haiti_unosat_target_list.csv"
+outfname_list_npy = "./data/haiti_unosat_target_list.npy"  
 
 utm_to_lonlat = Proj("+init=EPSG:32618")    
     
@@ -96,9 +96,6 @@ def process_shape(shape):
     
     #Assume that there is a class precedence, so that if a grid square has multiple shapes,
     #the one with highest attribute class value will take precedence
-    if t == 0:
-        #default class, lowest value, so can't override anything.
-        return
     x, y = point_to_grid(shape.points[0][0], shape.points[0][1])
     if x < 0 or x > nx or y < 0 or y > ny:
         return

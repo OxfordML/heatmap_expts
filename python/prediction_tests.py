@@ -80,7 +80,7 @@ class Tester(object):
         
         self.verbose = verbose
     
-    def run_tests(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
+    def run_tests(self, C_all, nx, ny, targetsx, targetsy, building_density, gold_density, Nlabels, Nrep_inc):
 
         C = C_all
     
@@ -128,6 +128,8 @@ class Tester(object):
                     # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
     
                 def logit(a):
+                    a[a==1] = 1 - 1e-6
+                    a[a==0] = 1e-6
                     return np.log(a / (1-a))
     
                 def kde_prediction(targets):                       
@@ -135,13 +137,13 @@ class Tester(object):
                         logp_loc_giv_damage = kdepos.logpdf(targets)
                     else:
                         norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
-                        logp_loc_giv_damage = mvn.logpdf(logit(targets.T / norma), mean=nx / 2.0, cov=10000)
+                        logp_loc_giv_damage = mvn.logpdf(logit(targets.T / norma), mean=norma.flatten() / 2.0, cov=10000)
                             
                     if neginputdata.shape[1] != 0:
                         logp_loc_giv_nodamage = kdeneg.logpdf(targets)#integrate_box(grid_lower[:, i], grid_upper[:, i])
                     else:
                         norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
-                        logp_loc_giv_nodamage = mvn.logpdf(logit(targets.T / norma), mean=nx / 2.0, cov=10000)
+                        logp_loc_giv_nodamage = mvn.logpdf(logit(targets.T / norma), mean=norma.flatten() / 2.0, cov=10000)
     
                     p_damage = (1.0 + posinputdata.shape[1]) / (2.0 + posinputdata.shape[1] + neginputdata.shape[1])
                     p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
@@ -234,10 +236,16 @@ class Tester(object):
                     self.gpgrid2.ny = opt_ny
     
                     # grid indicating where we made observations
-                    reportsx_grid = (reportsx * opt_nx/nx).astype(int)
-                    reportsy_grid = (reportsy * opt_ny/ny).astype(int)
+                    reportsx_grid = (reportsx * opt_nx/float(nx)).astype(int)
+                    reportsy_grid = (reportsy * opt_ny/float(ny)).astype(int)
+                    
+                    reportsy_grid = reportsy_grid[reportsx_grid < opt_nx]
+                    reportsx_grid = reportsx_grid[reportsx_grid < opt_nx]
+                    
+                    reportsx_grid = reportsx_grid[reportsy_grid < opt_ny]
+                    reportsy_grid = reportsy_grid[reportsy_grid < opt_ny]
     
-                    obs_grid = coo_matrix((np.ones(reportsx.shape[0]), (reportsx_grid, reportsy_grid)), (opt_nx, opt_ny))
+                    obs_grid = coo_matrix((np.ones(reportsx_grid.shape[0]), (reportsx_grid, reportsy_grid)), (opt_nx, opt_ny))
                     # Coordinates where we made observations, i.e. without duplicates due to multiple reports at some points
                     obs_coords = np.argwhere(obs_grid.toarray()>0)
                     obsx = obs_coords[:, 0]
@@ -245,7 +253,9 @@ class Tester(object):
     
                     #flatten the input data so it can be used with standard IBCC
                     linearIdxs = np.ravel_multi_index((reportsx_grid, reportsy_grid), dims=(opt_nx, opt_ny))
-                    C_flat = C[:,[0,1,3]]
+                    C_valid = C[C[:, 1] < nx, :]
+                    C_valid = C_valid[C_valid[:, 2] < ny, :]
+                    C_flat = C_valid[:,[0,1,3]]
                     C_flat[:,1] = linearIdxs
                     bcc_pred = self.ibcc_combiner.combine_classifications(C_flat, optimise_hyperparams=False)
                     bcc_pred = bcc_pred[np.ravel_multi_index((obsx, obsy), dims=(opt_nx, opt_ny)), 1]
@@ -336,21 +346,24 @@ class Tester(object):
                 testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
                 testresults[testresults==1] = 0.999999
 
-                # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
-                mce = - np.sum(gold_labels * np.log(testresults)) - np.sum((1-gold_labels) * np.log(1 - testresults))
-                mce = mce / float(len(gold_labels))
-                
-                rmse = np.sqrt( np.sum((testresults - gold_labels)**2) / float(len(gold_labels)) )
+                testresults = testresults[building_density>=0]
+                building_density = building_density[building_density>=0]
 
-                auc_by_class, _, _ = evaluator.eval_auc(testresults, gold_labels)
+                # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
+                mce = - np.sum(building_density * np.log(testresults)) - np.sum((1-building_density) * np.log(1 - testresults))
+                mce = mce / float(len(building_density))
+                
+                rmse = np.sqrt( np.mean((testresults - building_density)**2) )
+
+                auc_by_class, _, _ = evaluator.eval_auc(testresults, building_density)
                 if testresults.ndim == 2:
-                    auc = np.sum(np.bincount(gold_labels) * auc_by_class) / len(gold_labels)
+                    auc = np.sum(np.bincount(building_density) * auc_by_class) / len(building_density)
                 else:
                     auc = auc_by_class
         
                 print "Cross entropy (individual data points): %.4f" % (mce)
                 print "RMSE (individual data points): %.4f" % (rmse)
-                print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(gold_labels)) )
+                print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )
     
                 # assume gold density and est density have 1 row for each class
                 est_density = est_density.flatten()
@@ -360,7 +373,7 @@ class Tester(object):
                 mced = nlpd_beta(gold_density, est_density, est_density_var) 
                 print "Cross entropy (density estimation): %.4f" % mced
     
-                rmsed = np.sqrt( np.sum((est_density - gold_density)**2) / float(len(gold_density)) )
+                rmsed = np.sqrt( np.mean((est_density - gold_density)**2) )
                 print "RMSE (density estimation): %.4f" % rmsed
     
                 tau, _ = kendalltau(est_density, gold_density)
@@ -418,10 +431,18 @@ def nlpd_beta(gold, est_mean, est_var):
     '''
     This should be the same as cross entropy. Gives the negative log probability density of a ground-truth density value
     according to a beta distribution with given mean and variance.
-    '''    
-    a_plus_b = 1.0 / est_var * est_mean * (1-est_mean) - 1
+    '''
+    a_plus_b = (1.0 / est_var) * est_mean * (1-est_mean) - 1
     a = est_mean * a_plus_b
     b = (1-est_mean) * a_plus_b
+    
+    # gold density will break if it's actually set to zero or one.
+    minval = 1e-6
+    gold[gold > 1.0 - minval] = 1.0 - minval
+    gold[gold < minval] = minval
+        
+    a[a<minval] = minval
+    b[b<minval] = minval
     
     nlpd = np.sum(- beta.logpdf(gold, a, b)) 
     return nlpd / len(gold) # we return the mean per data point
