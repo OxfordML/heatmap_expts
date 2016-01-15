@@ -114,6 +114,6 @@ if __name__ == '__main__':
         tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
                 ls, optimise=False, verbose=False)            
                 
-        tester.run_tests(C, nx, ny, xtest, ytest, building_density.flatten(), gold_density.flatten(),
+        tester.run_tests(C, nx, ny, xtest, ytest, gold_labels.flatten(), gold_density.flatten(),
                          Nreps_initial, Nrep_inc)
         tester.save_separate_results()
