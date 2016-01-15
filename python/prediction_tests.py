@@ -327,77 +327,79 @@ class Tester(object):
                 density_var['HeatmapBCC'] = rho_var[1, :]
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
-            evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
+            if np.any(building_density) and np.any(gold_density):
+            
+                evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
     
-            gold_density = gold_density.flatten()
+                gold_density = gold_density.flatten()
     
-            for method in results:
-                print ''
-                print 'Results for %s with %i labels' % (method, Nlabels)
-                pred = results[method]
-                est_density = densityresults[method]
-                est_density_var = density_var[method].flatten()
-    
-                best_thresholds = []
-                mced = []
-                rmsed = []
-                tau = []
-                testresults = pred.flatten()
-                testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
-                testresults[testresults==1] = 0.999999
-
-                testresults = testresults[building_density>=0]
-                building_density = building_density[building_density>=0]
-
-                # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
-                mce = - np.sum(building_density * np.log(testresults)) - np.sum((1-building_density) * np.log(1 - testresults))
-                mce = mce / float(len(building_density))
-                
-                rmse = np.sqrt( np.mean((testresults - building_density)**2) )
-
-                auc_by_class, _, _ = evaluator.eval_auc(testresults, building_density)
-                if testresults.ndim == 2:
-                    auc = np.sum(np.bincount(building_density) * auc_by_class) / len(building_density)
-                else:
-                    auc = auc_by_class
+                for method in results:
+                    print ''
+                    print 'Results for %s with %i labels' % (method, Nlabels)
+                    pred = results[method]
+                    est_density = densityresults[method]
+                    est_density_var = density_var[method].flatten()
         
-                print "Cross entropy (individual data points): %.4f" % (mce)
-                print "RMSE (individual data points): %.4f" % (rmse)
-                print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )
+                    best_thresholds = []
+                    mced = []
+                    rmsed = []
+                    tau = []
+                    testresults = pred.flatten()
+                    testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
+                    testresults[testresults==1] = 0.999999
     
-                # assume gold density and est density have 1 row for each class
-                est_density = est_density.flatten()
-                est_density[est_density==0] = 0.0000001
-                est_density[est_density==1] = 0.9999999
+                    testresults = testresults[building_density>=0]
+                    building_density = building_density[building_density>=0]
     
-                mced = nlpd_beta(gold_density, est_density, est_density_var) 
-                print "Cross entropy (density estimation): %.4f" % mced
+                    # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
+                    mce = - np.sum(building_density * np.log(testresults)) - np.sum((1-building_density) * np.log(1 - testresults))
+                    mce = mce / float(len(building_density))
+                    
+                    rmse = np.sqrt( np.mean((testresults - building_density)**2) )
     
-                rmsed = np.sqrt( np.mean((est_density - gold_density)**2) )
-                print "RMSE (density estimation): %.4f" % rmsed
-    
-                tau, _ = kendalltau(est_density, gold_density)
-                if np.isnan(tau):
-                    print "Kendall's Tau --> NaNs are mapped to zero for plotting"
-                    tau = 0
-                print "Kendall's Tau (density estimation): %.4f " % tau
-    
-                if method not in self.auc_all:
-                    self.auc_all[method] = [auc]
-                    self.rmse_all[method] = [rmse]
-                    self.mce_all[method] = [mce]
-    
-                    self.tau_all[method] = [tau]
-                    self.rmsed_all[method] = [rmsed]
-                    self.mced_all[method] = [mced]
-                else:
-                    self.auc_all[method].append(auc)
-                    self.rmse_all[method].append(rmse)
-                    self.mce_all[method].append(mce)
-    
-                    self.tau_all[method].append(tau)
-                    self.rmsed_all[method].append(rmsed)
-                    self.mced_all[method].append(mced)
+                    auc_by_class, _, _ = evaluator.eval_auc(testresults, building_density)
+                    if testresults.ndim == 2:
+                        auc = np.sum(np.bincount(building_density) * auc_by_class) / len(building_density)
+                    else:
+                        auc = auc_by_class
+            
+                    print "Cross entropy (individual data points): %.4f" % (mce)
+                    print "RMSE (individual data points): %.4f" % (rmse)
+                    print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )
+        
+                    # assume gold density and est density have 1 row for each class
+                    est_density = est_density.flatten()
+                    est_density[est_density==0] = 0.0000001
+                    est_density[est_density==1] = 0.9999999
+        
+                    mced = nlpd_beta(gold_density, est_density, est_density_var) 
+                    print "Cross entropy (density estimation): %.4f" % mced
+        
+                    rmsed = np.sqrt( np.mean((est_density - gold_density)**2) )
+                    print "RMSE (density estimation): %.4f" % rmsed
+        
+                    tau, _ = kendalltau(est_density, gold_density)
+                    if np.isnan(tau):
+                        print "Kendall's Tau --> NaNs are mapped to zero for plotting"
+                        tau = 0
+                    print "Kendall's Tau (density estimation): %.4f " % tau
+        
+                    if method not in self.auc_all:
+                        self.auc_all[method] = [auc]
+                        self.rmse_all[method] = [rmse]
+                        self.mce_all[method] = [mce]
+        
+                        self.tau_all[method] = [tau]
+                        self.rmsed_all[method] = [rmsed]
+                        self.mced_all[method] = [mced]
+                    else:
+                        self.auc_all[method].append(auc)
+                        self.rmse_all[method].append(rmse)
+                        self.mce_all[method].append(mce)
+        
+                        self.tau_all[method].append(tau)
+                        self.rmsed_all[method].append(rmsed)
+                        self.mced_all[method].append(mced)
     
             # set up next iteration
             self.results_all[Nlabels] = results
