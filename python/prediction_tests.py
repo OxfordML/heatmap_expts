@@ -407,10 +407,10 @@ class Tester(object):
             self.densityVar_all[Nlabels] = density_var
             if Nlabels==C_all.shape[0]:
                 break
-            elif C_all.shape[0]-Nlabels<100:
-                Nlabels = C_all.shape[0]
             else:
                 Nlabels += Nrep_inc
+                if C_all.shape[0] < Nlabels:
+                    Nlabels = C_all.shape[0]
     
     
     def save_separate_results(self):

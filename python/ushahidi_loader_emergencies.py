@@ -13,21 +13,20 @@ from gen_synthetic import dataset_location
 from ushahididata import UshahidiDataHandler
 import prediction_tests
 
-RELOAD_GOLD = True # load the gold data from file, or compute from scratch?
+RELOAD_GOLD = False # load the gold data from file, or compute from scratch?
 
 expt_label_template = "/ushahidi_emergencies/"
     
-nruns = 20 # can use different random subsets of the reports C
+nruns = 1 # can use different random subsets of the reports C
 
 # number of labels in first iteration dataset
-Nreps_initial = 700
+Nreps_initial = 65
 
 # increment the number of labels at each iteration
-Nrep_inc = 500
+Nrep_inc = 65
 
-nx = 100.0
-
-ny = 100.0
+nx = 500.0
+ny = 500.0
 
 def load_data():
     datahandler = UshahidiDataHandler(nx,ny, './data/')
@@ -39,6 +38,9 @@ def load_data():
     # Put the reports into grid squares
     C[:, 1] = np.round(C[:, 1])
     C[:, 2] = np.round(C[:, 2])
+    
+    accepted_categories = [0, 1, 2, 3, 11, 12, 15, 17]
+    C = C[np.in1d(C[:, 0], accepted_categories), :]
 
     # number of available data points
     Nreports =  C.shape[0]
@@ -71,7 +73,7 @@ if __name__ == '__main__':
     ytest = np.tile(ytest, (1, nx))
     ytest = ytest.flatten()
        
-    C, Nreports = load_data()
+    C, Nreports, _, _, _, _ = load_data()
 
     # default hyper-parameters
     alpha0 = np.array([[3.0, 1.0], [1.0, 3.0]])[:,:,np.newaxis]
@@ -100,7 +102,7 @@ if __name__ == '__main__':
         logging.info("RUNNING METHODS WITH ALL LABELS TO ESTIMATE GOLD")
         tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
                 ls, optimise=False, verbose=False)            
-        tester.run_tests(C, nx, ny, xtest, ytest, [], [], Nreports, 1)    
+        tester.run_tests(C, nx, ny, xtest, ytest, [], [], Nreports, 1)
         tester.save_separate_results()
         
         results = tester.results_all[Nreports]

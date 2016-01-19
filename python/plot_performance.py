@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import logging
 
 # import gen_synthetic as expmt_module
-import ushahidi_loader_damage as expmt_module
-#import ushahidi_loader_emergencies as expmt_module
+#import ushahidi_loader_damage as expmt_module
+import ushahidi_loader_emergencies as expmt_module
 
 if hasattr(expmt_module, 'cluster_spreads'):
     cluster_spreads = expmt_module.cluster_spreads

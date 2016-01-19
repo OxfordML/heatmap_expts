@@ -18,9 +18,9 @@ expt_label_template = "/ushahidi_damage/"
 nruns = 20 # can use different random subsets of the reports C
 
 # number of labels in first iteration dataset
-Nreps_initial = 200
+Nreps_initial = 50
 # increment the number of labels at each iteration
-Nrep_inc = 500
+Nrep_inc = 50
 
 def load_data():
     #Load up some ground truth
@@ -85,6 +85,9 @@ if __name__ == '__main__':
     #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
     C, Nreports, nx, ny, gold_labels, gold_density = load_data()
 
+    # LIMIT THE NUMBER OF REPORTS
+    Nreports = 1000
+
     # Test at the grid squares only
     xtest = np.arange(nx)[np.newaxis, :]
     xtest = np.tile(xtest, (ny, 1))
@@ -117,6 +120,7 @@ if __name__ == '__main__':
         # for each run, use different subsets of labels
         shuffle_idxs = np.random.permutation(C.shape[0])
         C = C[shuffle_idxs, :]
+        C = C[:Nreports, :] # limit number of reports!
         
         dataset_label = "d%i" % (d)
         outputdir, _ = dataset_location(expt_label_template, dataset_label)         
