@@ -17,7 +17,7 @@ RELOAD_GOLD = False # load the gold data from file, or compute from scratch?
 
 expt_label_template = "/ushahidi_emergencies/"
     
-nruns = 1 # can use different random subsets of the reports C
+nruns = 20 # can use different random subsets of the reports C
 
 # number of labels in first iteration dataset
 Nreps_initial = 65
