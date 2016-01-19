@@ -18,8 +18,8 @@ maxlat = 18.8#19.4
 minlon = -72.6#-73.1
 maxlon = -72.0#-71.7   
     
-nx = 100
-ny = 100
+nx = 500
+ny = 500
 
 discrete=False
 

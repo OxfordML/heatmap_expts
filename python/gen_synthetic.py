@@ -129,7 +129,7 @@ if nproportions > S:
 weak_proportions = np.arange(1.0, nproportions + 1)
 weak_proportions /= (nproportions + 1)
 
-expt_label_template = 'output_cluslocs%.2f_bias_grid1'
+expt_label_template = 'synth/output_cluslocs%.2f_bias_grid1'
 
 # values to be used in each experiment
 cluster_spreads = [0.2]#[1.0, 0.5, 0.2] # spreads are multiplied by average distance between reports and a random 

@@ -15,6 +15,36 @@ import prediction_tests
 
 RELOAD_GOLD = True # load the gold data from file, or compute from scratch?
 
+expt_label_template = "/ushahidi_emergencies/"
+    
+nruns = 20 # can use different random subsets of the reports C
+
+# number of labels in first iteration dataset
+Nreps_initial = 700
+
+# increment the number of labels at each iteration
+Nrep_inc = 500
+
+nx = 100.0
+
+ny = 100.0
+
+def load_data():
+    datahandler = UshahidiDataHandler(nx,ny, './data/')
+    datahandler.discrete = False # do not snap-to-grid
+    datahandler.load_data()
+    # Could see how the methods vary with number of messages, i.e. when the messages come in according to the real
+    # time line. Can IBCC do better early on?
+    C = datahandler.C[1]
+    # Put the reports into grid squares
+    C[:, 1] = np.round(C[:, 1])
+    C[:, 2] = np.round(C[:, 2])
+
+    # number of available data points
+    Nreports =  C.shape[0]
+    
+    return C, Nreports, nx, ny, [], []
+    
 if __name__ == '__main__':
     print "Run tests to determine the accuracy of the bccheatmaps method."
 
@@ -31,12 +61,7 @@ if __name__ == '__main__':
     #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
     #Load up some ground truth
     datadir = './data/'
-    
-    nruns = 20 # can use different random subsets of the reports C
 
-    nx = 100.0
-    ny = 100.0
-    
     # Test at the grid squares only
     xtest = np.arange(nx)[np.newaxis, :]
     xtest = np.tile(xtest, (ny, 1))
@@ -46,18 +71,8 @@ if __name__ == '__main__':
     ytest = np.tile(ytest, (1, nx))
     ytest = ytest.flatten()
        
-    datahandler = UshahidiDataHandler(nx,ny, './data/')
-    datahandler.discrete = False # do not snap-to-grid
-    datahandler.load_data()
-    # Could see how the methods vary with number of messages, i.e. when the messages come in according to the real
-    # time line. Can IBCC do better early on?
-    C = datahandler.C[1]
-    # Put the reports into grid squares
-    C[:, 1] = np.round(C[:, 1])
-    C[:, 2] = np.round(C[:, 2])
-    C_all = C # save for later
+    C, Nreports = load_data()
 
-    K = datahandler.K
     # default hyper-parameters
     alpha0 = np.array([[3.0, 1.0], [1.0, 3.0]])[:,:,np.newaxis]
     alpha0 = np.tile(alpha0, (1,1,3))
@@ -75,40 +90,44 @@ if __name__ == '__main__':
     
     ls = 10
 
-    # number of labels in first iteration dataset
-    Nreps_initial = 700
-    # increment the number of labels at each iteration
-    Nrep_inc = 500
-
-    # number of available data points
-    Nreports =  C.shape[0]
-
-    outputdir, _ = dataset_location("/ushahidi_emergencies/", "gold")
+    outputdir, _ = dataset_location(expt_label_template, "gold")
     
     if os.path.exists(outputdir + "results.npy") and RELOAD_GOLD:
-        results = np.load(outputdir + "results.npy")
-        density_results = np.load(outputdir + "density_results.npy")
+        logging.info("LOADING GOLD DATA")
+        results = np.load(outputdir + "results.npy").item()[Nreports]
+        density_results = np.load(outputdir + "density_results.npy").item()[Nreports]
     else:
         logging.info("RUNNING METHODS WITH ALL LABELS TO ESTIMATE GOLD")
         tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
                 ls, optimise=False, verbose=False)            
-        tester.run_tests(C, nx, ny, xtest, ytest, [], [], Nreps_initial, Nrep_inc)    
+        tester.run_tests(C, nx, ny, xtest, ytest, [], [], Nreports, 1)    
         tester.save_separate_results()
-    
-    # initialise the label sets.
-    gold_labels = np.zeros(len(xtest)) - 1
-    gold_density = np.zeros(len(xtest)) - 1
+        
+        results = tester.results_all[Nreports]
+        density_results = tester.densityresults_all[Nreports]
     
     # find indices where all methods agree to within 0.1
-    for m in methods:
-        mlabels = tester.results_all[m]
-        mdensity = tester.densityresults_all[m]
-        if not np.any(gold_labels): # first iteration
-            gold_labels = mlabels 
-            gold_density = mdensity
-            continue
-        # check whether mlabels agree
-        disagree_idxs = (np.abs(mlabels - gold_labels) > 0.1) or (np.abs(mdensity - gold_density) > 0.1) 
+    for i, m in enumerate(results):
+        if i==0:
+            mlabels = np.zeros((len(results[m]), len(results)))
+            mdensity = np.zeros((len(results[m]), len(results)))
+        mlabels[:, i] = results[m].flatten()
+        mdensity[:, i] = density_results[m].flatten()
+        
+    gold_labels = np.mean(mlabels, axis=1)
+    gold_density = np.mean(mdensity, axis=1)     
+    
+    gold_tol = 0.1
+    
+    for i in range(mlabels.shape[1]):       
+        # check whether mlabels agree: gold labels are within tolerance, densities are within tolerance, and gold labels
+        # have not flipped to the other side of 0.5.
+        disagree_idxs = (np.abs(mlabels[:, i] - gold_labels) > gold_tol) | \
+            (np.abs(mdensity[:, i] - gold_density) > gold_tol) | ((gold_labels>0.5) != (mlabels[:, i]>0.5)) \
+                        | ((mlabels[:, i] > 0.4) & (mlabels[:, i] < 0.6))
+            # We could also include only locations with confident classifications, but this biases away from places with
+            # uncertain densities. Alternative is to select only when confident + there are reports. This might help
+            # with AUC estimates -- but the models are not really confident enough to evaluate AUCs. 
         gold_labels[disagree_idxs] = - 1
         gold_density[disagree_idxs] = - 1
         
@@ -128,7 +147,7 @@ if __name__ == '__main__':
         C = C[shuffle_idxs, :]
         
         dataset_label = "d%i" % (d)
-        outputdir, _ = dataset_location("/ushahidi_damage/", dataset_label)         
+        outputdir, _ = dataset_location(expt_label_template, dataset_label)         
         
         # Run the tests with the current data set
         tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 

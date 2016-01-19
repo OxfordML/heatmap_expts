@@ -145,7 +145,7 @@ class Tester(object):
                         norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
                         logp_loc_giv_nodamage = mvn.logpdf(logit(targets.T / norma), mean=norma.flatten() / 2.0, cov=10000)
     
-                    p_damage = (1.0 + posinputdata.shape[1]) / (2.0 + posinputdata.shape[1] + neginputdata.shape[1])
+                    p_damage = self.z0#(1.0 + posinputdata.shape[1]) / (2.0 + posinputdata.shape[1] + neginputdata.shape[1])
                     p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
                     p_nodamage_loc = np.exp(logp_loc_giv_nodamage + np.log(1 - p_damage))
                     p_damage_giv_loc  = p_damage_loc / (p_damage_loc + p_nodamage_loc)

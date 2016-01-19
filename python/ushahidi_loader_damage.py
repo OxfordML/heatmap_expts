@@ -12,27 +12,22 @@ from gen_synthetic import dataset_location
 from ushahididata import UshahidiDataHandler
 import prediction_tests
 
-if __name__ == '__main__':
-    print "Run tests to determine the accuracy of the bccheatmaps method."
 
-    logging.basicConfig(level=logging.DEBUG)
-    logging.getLogger().setLevel(logging.DEBUG)
+expt_label_template = "/ushahidi_damage/"
 
-    methods = [
-               'KDE',
-               'GP',
-               'IBCC+GP',
-               'HeatmapBCC'
-               ]
+nruns = 20 # can use different random subsets of the reports C
 
-    #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
+# number of labels in first iteration dataset
+Nreps_initial = 200
+# increment the number of labels at each iteration
+Nrep_inc = 500
+
+def load_data():
     #Load up some ground truth
     datadir = './data/'
     goldfile_grid = datadir + 'haiti_unosat_target_grid.npy'
     building_density = np.load(goldfile_grid)
     gold_labels = building_density > 0
-
-    nruns = 20 # can use different random subsets of the reports C
 
     # to determine gold density, take a fraction of this and surrounding areas to determine fraction affected
     gold_sums = building_density.copy()
@@ -59,15 +54,6 @@ if __name__ == '__main__':
 
     nx = gold_density.shape[0]
     ny = gold_density.shape[1]
-    
-    # Test at the grid squares only
-    xtest = np.arange(nx)[np.newaxis, :]
-    xtest = np.tile(xtest, (ny, 1))
-    xtest = xtest.flatten()
-     
-    ytest = np.arange(ny)[:, np.newaxis]
-    ytest = np.tile(ytest, (1, nx))
-    ytest = ytest.flatten()
        
     datahandler = UshahidiDataHandler(nx,ny, './data/')
     datahandler.discrete = False # do not snap-to-grid
@@ -78,9 +64,36 @@ if __name__ == '__main__':
     # Put the reports into grid squares
     C[:, 1] = np.round(C[:, 1])
     C[:, 2] = np.round(C[:, 2])
-    C_all = C # save for later
+    # number of available data points
+    Nreports =  C.shape[0]
+    
+    return C, Nreports, nx, ny, gold_labels, gold_density    
 
-    K = datahandler.K
+if __name__ == '__main__':
+    print "Run tests to determine the accuracy of the bccheatmaps method."
+
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger().setLevel(logging.DEBUG)
+
+    methods = [
+               'KDE',
+               'GP',
+               'IBCC+GP',
+               'HeatmapBCC'
+               ]
+
+    #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
+    C, Nreports, nx, ny, gold_labels, gold_density = load_data()
+
+    # Test at the grid squares only
+    xtest = np.arange(nx)[np.newaxis, :]
+    xtest = np.tile(xtest, (ny, 1))
+    xtest = xtest.flatten()
+     
+    ytest = np.arange(ny)[:, np.newaxis]
+    ytest = np.tile(ytest, (1, nx))
+    ytest = ytest.flatten()
+    
     # default hyper-parameters
     alpha0 = np.array([[3.0, 1.0], [1.0, 3.0]])[:,:,np.newaxis]
     alpha0 = np.tile(alpha0, (1,1,3))
@@ -90,21 +103,13 @@ if __name__ == '__main__':
     clusteridxs_all = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 2, 2, 2, 2, 0, 0, 2, 2])
     alpha0_all = alpha0
     # set an uninformative prior over the spatial GP
-    nu0 = np.array([2.0, 1.0])
+    nu0 = np.array([3.0, 1.0])
     z0 = nu0[1] / np.sum(nu0)
 
     shape_s0 = 10
     rate_s0 = 4
     
     ls = 10
-
-    # number of labels in first iteration dataset
-    Nreps_initial = 700
-    # increment the number of labels at each iteration
-    Nrep_inc = 500
-
-    # number of available data points
-    Nreports =  C.shape[0]
 
     # Run the tests with the current dataset
     for d in range(nruns):
@@ -114,7 +119,7 @@ if __name__ == '__main__':
         C = C[shuffle_idxs, :]
         
         dataset_label = "d%i" % (d)
-        outputdir, _ = dataset_location("/ushahidi_damage/", dataset_label)         
+        outputdir, _ = dataset_location(expt_label_template, dataset_label)         
         
         # Run the tests with the current data set
         tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
