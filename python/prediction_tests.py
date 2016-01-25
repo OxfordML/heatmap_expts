@@ -68,10 +68,17 @@ class Tester(object):
         self.auc_all = {}
         self.mce_all = {}
         self.rmse_all = {}
+        self.errvar_all = {}
 
         self.tau_all = {}
         self.mced_all = {}
         self.rmsed_all = {}
+        
+        self.acc_all = {}
+        self.pos_all = {}
+        self.neg_all = {}
+        self.precision_all = {}
+        self.recall_all = {}
         
         self.gpgrid = None
         self.heatmapcombiner = None
@@ -113,15 +120,24 @@ class Tester(object):
                 neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))
                 logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
                 if posinputdata.shape[1] != 0:
-                    if self.optimise:
-                        kdepos = gaussian_kde(posinputdata, 'scott')
-                    else:
-                        kdepos = gaussian_kde(posinputdata, self.ls_initial)
+                    try:
+                        if self.optimise:
+                            kdepos = gaussian_kde(posinputdata, 'scott')
+                        else:   
+                            kdepos = gaussian_kde(posinputdata, self.ls_initial)
+                    except:
+                        logging.error("Couldn't run KDE")
+                        kdepos = []
+                
                 if neginputdata.shape[1] != 0:
-                    if self.optimise:
-                        kdeneg = gaussian_kde(neginputdata, 'scott')
-                    else:
-                        kdeneg = gaussian_kde(neginputdata, self.ls_initial)
+                    try:
+                        if self.optimise:
+                            kdeneg = gaussian_kde(neginputdata, 'scott')
+                        else:
+                            kdeneg = gaussian_kde(neginputdata, self.ls_initial)
+                    except:
+                        logging.error("Couldn't run KDE")
+                        kdeneg = []
                     
                 #else: # Treat the points with no observation as negatives
                     # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
@@ -132,20 +148,21 @@ class Tester(object):
                     a[a==0] = 1e-6
                     return np.log(a / (1-a))
     
-                def kde_prediction(targets):                       
-                    if posinputdata.shape[1] != 0:
-                        logp_loc_giv_damage = kdepos.logpdf(targets)
-                    else:
-                        norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
-                        logp_loc_giv_damage = mvn.logpdf(logit(targets.T / norma), mean=norma.flatten() / 2.0, cov=10000)
+                def kde_prediction(targets):
+                    
+                    # start with a flat function
+                    logp_loc_giv_damage = np.log(1.0 / (nx * ny))
+                    logp_loc_giv_nodamage = np.log(1.0 / (nx * ny))
+                    # put kernel density estimator over it, weighted by number of data points
+                    w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 1000)
+                    w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 1000)
+                    if posinputdata.shape[1] != 0 and kdepos:
+                        logp_loc_giv_damage = logp_loc_giv_damage*(1-w_damage) + kdepos.logpdf(targets)*w_damage
                             
-                    if neginputdata.shape[1] != 0:
-                        logp_loc_giv_nodamage = kdeneg.logpdf(targets)#integrate_box(grid_lower[:, i], grid_upper[:, i])
-                    else:
-                        norma = np.array([nx, ny], dtype=float)[np.newaxis, :]
-                        logp_loc_giv_nodamage = mvn.logpdf(logit(targets.T / norma), mean=norma.flatten() / 2.0, cov=10000)
+                    if neginputdata.shape[1] != 0 and kdeneg:
+                        logp_loc_giv_nodamage = logp_loc_giv_nodamage*(1-w_nodamage) * kdeneg.logpdf(targets)*w_nodamage
     
-                    p_damage = self.z0#(1.0 + posinputdata.shape[1]) / (2.0 + posinputdata.shape[1] + neginputdata.shape[1])
+                    p_damage = self.z0
                     p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
                     p_nodamage_loc = np.exp(logp_loc_giv_nodamage + np.log(1 - p_damage))
                     p_damage_giv_loc  = p_damage_loc / (p_damage_loc + p_nodamage_loc)
@@ -291,17 +308,40 @@ class Tester(object):
                     return nlml
                 
                 # try different levels of separation with on average 3 data points per grid square, 5 per grid square and 10 per grid square.
-                Nper_grid_sq = [3, 5, 10]
-                for grouping in Nper_grid_sq:
-                    gridsize = int(np.ceil(len(reportsx) / grouping) )
-                    nlml = train_gp_on_ibcc_output(gridsize, gridsize)
-                    logging.debug("NLML = %.2f" % nlml)
-                    targetsx_grid = (targetsx * gridsize / float(nx)).astype(int)
-                    targetsy_grid = (targetsy * gridsize / float(ny)).astype(int)
-                    gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
-                    results['IBCC+GP_%i' % grouping] = gp_preds
-                    densityresults['IBCC+GP_%i' % grouping] = gp_preds
-                    density_var['IBCC+GP_%i' % grouping] = gp_var
+                #Nper_grid_sq = [3, 5, 10]
+                #for grouping in Nper_grid_sq:
+                #gridsize = int(np.ceil(len(reportsx) / grouping) )
+                nlml = train_gp_on_ibcc_output(nx, ny)#gridsize, gridsize)
+                logging.debug("NLML = %.2f" % nlml)
+                targetsx_grid = targetsx#(targetsx * gridsize / float(nx)).astype(int)
+                targetsy_grid = targetsy#(targetsy * gridsize / float(ny)).astype(int)
+                gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
+                #results['IBCC+GP_%i' % grouping] = gp_preds
+                #densityresults['IBCC+GP_%i' % grouping] = gp_preds
+                #density_var['IBCC+GP_%i' % grouping] = gp_var
+                results['IBCC+GP'] = gp_preds
+                densityresults['IBCC+GP'] = gp_preds
+                density_var['IBCC+GP'] = gp_var
+                    
+            # RUN IBCC -- will only detect the report locations properly, otherwise defaults to kappa ------------------
+            if 'IBCC' in self.methods:
+                self.ibcc2 = IBCC(2, 2, alpha0, self.nu0, K)                
+                self.ibcc2.clusteridxs_alpha0 = clusteridxs
+                self.ibcc2.verbose = self.verbose
+                self.ibcc2.min_iterations = 5
+                
+                report_coords = (C[:,1].astype(int), C[:, 2].astype(int))
+                linearIdxs = np.ravel_multi_index(report_coords, dims=(nx, ny))
+                C_flat = C[:,[0,1,3]]
+                C_flat[:,1] = linearIdxs
+                testidxs = np.ravel_multi_index((targetsx, targetsy), dims=(nx, ny))
+                bintestidxs = np.zeros(np.max([np.max(testidxs), np.max(linearIdxs)]) + 1, dtype=bool)
+                bintestidxs[testidxs] = True
+                bcc_pred = self.ibcc2.combine_classifications(C_flat, optimise_hyperparams=False, testidxs=bintestidxs)
+                                
+                results['IBCC'] = bcc_pred[testidxs, 1]
+                densityresults['IBCC'] = results['IBCC']
+                density_var['IBCC'] = np.zeros(len(results['IBCC']))
     
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
@@ -348,6 +388,9 @@ class Tester(object):
                     testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
                     testresults[testresults==1] = 0.999999
     
+                    pos_percent = (np.sum(testresults >= 0.5) / float(len(testresults)))
+                    neg_percent = (np.sum(testresults < 0.5) / float(len(testresults)))
+    
                     testresults = testresults[building_density>=0]
                     building_density = building_density[building_density>=0]
     
@@ -356,15 +399,32 @@ class Tester(object):
                     mce = mce / float(len(building_density))
                     
                     rmse = np.sqrt( np.mean((testresults - building_density)**2) )
+                    error_var = np.var(testresults - building_density)
     
                     auc_by_class, _, _ = evaluator.eval_auc(testresults, building_density)
                     if testresults.ndim == 2:
                         auc = np.sum(np.bincount(building_density) * auc_by_class) / len(building_density)
                     else:
                         auc = auc_by_class
+                    
+                    acc = np.sum(np.round(testresults)==np.round(building_density)) / float(len(building_density))
+                    tp = np.sum((testresults >= 0.5) & (building_density >= 0.5))
+                    fp = np.sum((testresults >= 0.5) & (building_density < 0.5))
+                    if tp > 0:
+                        precision = tp / float(tp + fp)
+                    else:
+                        precision = 0
+                        
+                    recall = tp / float(np.sum(building_density >= 0.5 ))
+                    print "Classification accuracy: %.4f" % acc
+                    print "Percentage marked as +ve: %.4f" % pos_percent
+                    print "Percentage marked as -ve: %.4f" % neg_percent
+                    print "Precision: %.4f" % precision
+                    print "Recall: %.4f" % recall
             
                     print "Cross entropy (individual data points): %.4f" % (mce)
                     print "RMSE (individual data points): %.4f" % (rmse)
+                    print "Error variance: %.4f" % error_var
                     print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )
         
                     # assume gold density and est density have 1 row for each class
@@ -387,19 +447,33 @@ class Tester(object):
                     if method not in self.auc_all:
                         self.auc_all[method] = [auc]
                         self.rmse_all[method] = [rmse]
+                        self.errvar_all[method] = [error_var]
                         self.mce_all[method] = [mce]
         
                         self.tau_all[method] = [tau]
                         self.rmsed_all[method] = [rmsed]
                         self.mced_all[method] = [mced]
+                        
+                        self.acc_all[method] = [acc]
+                        self.pos_all[method] = [pos_percent]
+                        self.neg_all[method] = [neg_percent]
+                        self.precision_all[method] = [precision]
+                        self.recall_all[method] = [recall]
                     else:
                         self.auc_all[method].append(auc)
                         self.rmse_all[method].append(rmse)
+                        self.errvar_all[method].append(error_var)
                         self.mce_all[method].append(mce)
         
                         self.tau_all[method].append(tau)
                         self.rmsed_all[method].append(rmsed)
                         self.mced_all[method].append(mced)
+                        
+                        self.acc_all[method].append(acc)
+                        self.pos_all[method].append(pos_percent)
+                        self.neg_all[method].append(neg_percent)
+                        self.precision_all[method].append(precision)
+                        self.recall_all[method].append(recall)
     
             # set up next iteration
             self.results_all[Nlabels] = results
@@ -420,11 +494,17 @@ class Tester(object):
         np.save(self.outputdir + "density_results.npy", self.densityresults_all)
         np.save(self.outputdir + "density_var.npy", self.densityVar_all)
         np.save(self.outputdir + "rmse.npy", self.rmse_all)
+        np.save(self.outputdir + "errvar.npy", self.errvar_all)
         np.save(self.outputdir + "auc.npy", self.auc_all)
         np.save(self.outputdir + "mce.npy", self.mce_all)
         np.save(self.outputdir + "rmsed.npy", self.rmsed_all)
         np.save(self.outputdir + "tau.npy", self.tau_all)
         np.save(self.outputdir + "mced.npy", self.mced_all)
+        np.save(self.outputdir + "acc.npy", self.acc_all)
+        np.save(self.outputdir + "pos.npy", self.pos_all)
+        np.save(self.outputdir + "neg.npy", self.neg_all)
+        np.save(self.outputdir + "precision.npy", self.precision_all)
+        np.save(self.outputdir + "recall.npy", self.recall_all)
         
     def save_self(self):
         np.save(self.outputdir + "tester.npy", self)
