@@ -18,8 +18,8 @@ maxlat = 18.8#19.4
 minlon = -72.6#-73.1
 maxlon = -72.0#-71.7   
     
-nx = 500
-ny = 500
+nx = 100
+ny = 100
 
 discrete=False
 
@@ -32,10 +32,10 @@ tgrid_totals = np.zeros((nx, ny), dtype=np.float)
 #Treat 0 as default if no shape with another attribute is found in that square.
 
 inputfname = "./data/PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2"
-outfname_grid_csv = "./data/haiti_unosat_target_grid.csv"
-outfname_grid_npy = "./data/haiti_unosat_target_grid.npy"
-outfname_list_csv = "./data/haiti_unosat_target_list.csv"
-outfname_list_npy = "./data/haiti_unosat_target_list.npy"  
+outfname_grid_csv = "./data/haiti_unosat_target_grid%i_%i.csv" % (nx, ny)
+outfname_grid_npy = "./data/haiti_unosat_target_grid%i_%i.npy" % (nx, ny)
+outfname_list_csv = "./data/haiti_unosat_target_list%i_%i.csv" % (nx, ny)
+outfname_list_npy = "./data/haiti_unosat_target_list%i_%i.npy" % (nx, ny)
 
 utm_to_lonlat = Proj("+init=EPSG:32618")    
     
