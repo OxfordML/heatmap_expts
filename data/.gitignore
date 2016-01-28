@@ -16,3 +16,4 @@ output_cluslocs0.50_bias_test1
 output_cluslocs1.00_bias_test1
 data/synth/*
 /PDNA_HTI_2010_Atlas_of_Building_Damage_Assessment_UNOSAT_JRC_WB_v2.dbf
+/.DS_Store

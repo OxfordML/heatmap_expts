@@ -16,7 +16,7 @@ attmap = {1:0, 2:0, 3:1, 4:1, 5:1} #map the attributes in the shape file to targ
 minlat = 18.2#18.0
 maxlat = 18.8#19.4
 minlon = -72.6#-73.1
-maxlon = -72.0#-71.7   
+maxlon = -72.0#-71.7
     
 nx = 100
 ny = 100
