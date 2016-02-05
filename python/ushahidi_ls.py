@@ -11,7 +11,8 @@ from ushahididata import UshahidiDataHandler
 from gen_synthetic import dataset_location
 from scipy.stats import gamma
 from gpgrid import GPGrid
-from sklearn import gaussian_process
+#from sklearn import gaussian_process
+
 
 nx = 100
 ny = 100
@@ -59,7 +60,7 @@ def load_damage_data():
     ytestgrid = ytestgrid.flatten()
     
     #random selection
-    selectionsize = 0.1
+    selectionsize = 0.2
     idxs = np.random.choice(len(xtestgrid), selectionsize * len(xtestgrid))
     xtestgrid = xtestgrid[idxs]
     ytestgrid = ytestgrid[idxs]
@@ -90,9 +91,10 @@ if __name__ == '__main__':
     C, Nreports = load_damage_data()#load_data() 
     print "number of reports: %i" % Nreports
     
-    lengthscales = [64, 32, 24, 18, 17, 16, 15, 14, 10, 5, 2]#, 256, 512]
+    lengthscales = [64, 32, 24, 16, 8, 4, 2]#, 256, 512]
     
-    lml = np.zeros(len(lengthscales))
+    lml_h = np.zeros(len(lengthscales))
+    lml_g = np.zeros(len(lengthscales))
     
 #     gp = gaussian_process.GaussianProcess(corr='squared_exponential', theta0=10, thetaL=1, thetaU=200, verbose=True)
 #     C[C[:, 3]<1e-6, 3] = 1e-6
@@ -106,35 +108,36 @@ if __name__ == '__main__':
         rate_ls = shape_ls / ls
              
         #HEATMAPBCC OBJECT
-#         heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, np.unique(C[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
-#                       rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
-#         heatmapcombiner.min_iterations = 4
-#         heatmapcombiner.max_iterations = 200
-#         heatmapcombiner.verbose = True
-#         heatmapcombiner.conv_threshold = 1e-3
-#         heatmapcombiner.uselowerbound = True
-#            
-#         logging.info("Running HeatmapBCC... length scale = %f" % ls)
-#         # to do:
-#         # make sure optimise works
-#         # make sure the optimal hyper-parameters are passed to the next iteration
-#         #heatmapcombiner.clusteridxs_alpha0 = clusteridxs
-#         results = heatmapcombiner.combine_classifications(C)
-#         lml[i] = heatmapcombiner.lowerbound()
+        heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, np.unique(C[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
+                      rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+        heatmapcombiner.min_iterations = 4
+        heatmapcombiner.max_iterations = 200
+        heatmapcombiner.verbose = False
+        heatmapcombiner.conv_threshold = 1e-3
+        heatmapcombiner.uselowerbound = True
+            
+        logging.info("Running HeatmapBCC... length scale = %f" % ls)
+        # to do:
+        # make sure optimise works
+        # make sure the optimal hyper-parameters are passed to the next iteration
+        #heatmapcombiner.clusteridxs_alpha0 = clusteridxs
+        results = heatmapcombiner.combine_classifications(C)
+        lml_h[i] = heatmapcombiner.lowerbound()
    
         gpgrid = GPGrid(nx, ny, z0=z0, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=2.0, rate_ls=rate_ls)
         gpgrid.min_iter_VB = 3
-        gpgrid.verbose = True
+        gpgrid.verbose = False
         gpgrid.max_iter_G = 10
         gpgrid.conv_threshold = 1e-5
         gpgrid.conv_check_freq = 1
         countsize = 1.0
         results = gpgrid.fit((C[:, 1], C[:, 2]), C[:, 3] * countsize, totals=np.zeros((C.shape[0], 1)) + countsize)
    
-        lml[i] = gpgrid.lowerbound()
+        lml_g[i] = gpgrid.lowerbound()
          
         #logging.debug("output scale: %.5f" % heatmapcombiner.heatGP[1].s)
-        logging.info("Lower bound: %.4f with length scale %f" % (lml[i], ls))
+        logging.info("HeatmapBCC Lower bound: %.4f with length scale %f" % (lml_h[i], ls))
+        logging.info("GP Lower bound: %.4f with length scale %f" % (lml_g[i], ls))
          
 #         # bias toward ls=100
 #         shape_ls = 10
@@ -145,9 +148,15 @@ if __name__ == '__main__':
         
     from matplotlib import pyplot as plt
     
+    for i, ls in enumerate(lengthscales):
+        logging.info("HeatmapBCC Lower bound: %.4f with length scale %f" % (lml_h[i], ls))
+        logging.info("GP Lower bound: %.4f with length scale %f" % (lml_g[i], ls))
+    
     plt.figure()
-    plt.plot(lengthscales, lml)
+    plt.plot(lengthscales, lml_h, label='HeatmapBCC')
+    plt.plot(lengthscales, lml_g, label='GP')
     plt.title("Lower bound variation with Length Scale on Ushahidi Data")
     plt.xlabel("Length scale")
     plt.ylabel("Variational Lower Bound")
+    plt.legend(loc='best')
     plt.savefig("./lengthscale_test.png")
