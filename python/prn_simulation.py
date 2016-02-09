@@ -208,7 +208,7 @@ if __name__ == '__main__':
                 C_d = C_d.astype(int)
             # Run the tests with the current data set
             tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
-                                             ls[0], optimise=False, verbose=True)            
+                                             ls[0], optimise=False, verbose=False)            
             tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold, Nreps_initial, 
                              Nrep_inc)
             if SAVE_RESULTS:
