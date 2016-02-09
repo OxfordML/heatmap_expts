@@ -57,9 +57,10 @@ class Tester(object):
         self.Nlabels_all = Nlabels_all
         self.z0 = z0
         self.alpha0_all = alpha0_all
+        
+        self.L = self.alpha0_all.shape[1]
+        
         self.nu0 = nu0
-        if not np.any(clusteridxs_all):
-            clusteridxs_all = np.zeros(self.alpha0_all.shape[2], dtype=int)
         self.clusteridxs_all = clusteridxs_all
 
         self.results_all = {}
@@ -98,6 +99,8 @@ class Tester(object):
             C = C_all[0:Nlabels, :]
             agents = np.unique(C[:,0])
             K = int(np.max(agents)+1)
+            if not np.any(self.clusteridxs_all):
+                self.clusteridxs_all = np.zeros(K, dtype=int)
             clusteridxs = self.clusteridxs_all[0:K]
             alpha0 = self.alpha0_all
     
@@ -121,20 +124,20 @@ class Tester(object):
                 logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
                 if posinputdata.shape[1] != 0:
                     try:
-                        if self.optimise:
-                            kdepos = gaussian_kde(posinputdata, 'scott')
-                        else:   
-                            kdepos = gaussian_kde(posinputdata, self.ls_initial)
+                        #if self.optimise:
+                        kdepos = gaussian_kde(posinputdata, 'scott')
+                        #else:   
+                        #    kdepos = gaussian_kde(posinputdata, self.ls_initial)
                     except:
                         logging.error("Couldn't run KDE")
                         kdepos = []
                 
                 if neginputdata.shape[1] != 0:
                     try:
-                        if self.optimise:
-                            kdeneg = gaussian_kde(neginputdata, 'scott')
-                        else:
-                            kdeneg = gaussian_kde(neginputdata, self.ls_initial)
+                        #if self.optimise:
+                        kdeneg = gaussian_kde(neginputdata, 'scott')
+                        #else:
+                        #    kdeneg = gaussian_kde(neginputdata, self.ls_initial)
                     except:
                         logging.error("Couldn't run KDE")
                         kdeneg = []
@@ -151,16 +154,16 @@ class Tester(object):
                 def kde_prediction(targets):
                     
                     # start with a flat function
-                    logp_loc_giv_damage = np.log(1.0 / (nx * ny))
-                    logp_loc_giv_nodamage = np.log(1.0 / (nx * ny))
+                    logp_loc_giv_damage = np.log(1.0 / (nx * ny * 2.0))
+                    logp_loc_giv_nodamage = np.log(1.0 / (nx * ny * 2.0))
                     # put kernel density estimator over it, weighted by number of data points
-                    w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 1000)
-                    w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 1000)
+                    w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 5)
+                    w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 5)
                     if posinputdata.shape[1] != 0 and kdepos:
                         logp_loc_giv_damage = logp_loc_giv_damage*(1-w_damage) + kdepos.logpdf(targets)*w_damage
                             
                     if neginputdata.shape[1] != 0 and kdeneg:
-                        logp_loc_giv_nodamage = logp_loc_giv_nodamage*(1-w_nodamage) * kdeneg.logpdf(targets)*w_nodamage
+                        logp_loc_giv_nodamage = logp_loc_giv_nodamage*(1-w_nodamage) + kdeneg.logpdf(targets)*w_nodamage
     
                     p_damage = self.z0
                     p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
@@ -325,7 +328,7 @@ class Tester(object):
                     
             # RUN IBCC -- will only detect the report locations properly, otherwise defaults to kappa ------------------
             if 'IBCC' in self.methods:
-                self.ibcc2 = IBCC(2, 2, alpha0, self.nu0, K)                
+                self.ibcc2 = IBCC(2, 2, alpha0, self.nu0, K, uselowerbound=True)                
                 self.ibcc2.clusteridxs_alpha0 = clusteridxs
                 self.ibcc2.verbose = self.verbose
                 self.ibcc2.min_iterations = 5
@@ -337,6 +340,7 @@ class Tester(object):
                 testidxs = np.ravel_multi_index((targetsx, targetsy), dims=(nx, ny))
                 bintestidxs = np.zeros(np.max([np.max(testidxs), np.max(linearIdxs)]) + 1, dtype=bool)
                 bintestidxs[testidxs] = True
+                bintestidxs[linearIdxs] = True # make sure we use all observed data points during inference
                 bcc_pred = self.ibcc2.combine_classifications(C_flat, optimise_hyperparams=False, testidxs=bintestidxs)
                                 
                 results['IBCC'] = bcc_pred[testidxs, 1]
@@ -367,23 +371,16 @@ class Tester(object):
                 density_var['HeatmapBCC'] = rho_var[1, :]
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
-            if np.any(building_density) and np.any(gold_density):
-            
+            if np.any(building_density):
                 evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
-    
-                gold_density = gold_density.flatten()
-    
+                
                 for method in results:
                     print ''
                     print 'Results for %s with %i labels' % (method, Nlabels)
+                    
                     pred = results[method]
-                    est_density = densityresults[method]
-                    est_density_var = density_var[method].flatten()
-        
+                    
                     best_thresholds = []
-                    mced = []
-                    rmsed = []
-                    tau = []
                     testresults = pred.flatten()
                     testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
                     testresults[testresults==1] = 0.999999
@@ -393,7 +390,7 @@ class Tester(object):
     
                     testresults = testresults[building_density>=0]
                     building_density = building_density[building_density>=0]
-    
+
                     # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
                     mce = - np.sum(building_density * np.log(testresults)) - np.sum((1-building_density) * np.log(1 - testresults))
                     mce = mce / float(len(building_density))
@@ -401,13 +398,15 @@ class Tester(object):
                     rmse = np.sqrt( np.mean((testresults - building_density)**2) )
                     error_var = np.var(testresults - building_density)
     
-                    auc_by_class, _, _ = evaluator.eval_auc(testresults, building_density)
+                    discrete_gold = np.round(building_density)
+    
+                    auc_by_class, _, _ = evaluator.eval_auc(testresults, discrete_gold)
                     if testresults.ndim == 2:
-                        auc = np.sum(np.bincount(building_density) * auc_by_class) / len(building_density)
+                        auc = np.sum(np.bincount(discrete_gold) * auc_by_class) / len(discrete_gold)
                     else:
                         auc = auc_by_class
                     
-                    acc = np.sum(np.round(testresults)==np.round(building_density)) / float(len(building_density))
+                    acc = np.sum(np.round(testresults)==discrete_gold) / float(len(building_density))
                     tp = np.sum((testresults >= 0.5) & (building_density >= 0.5))
                     fp = np.sum((testresults >= 0.5) & (building_density < 0.5))
                     if tp > 0:
@@ -425,8 +424,46 @@ class Tester(object):
                     print "Cross entropy (individual data points): %.4f" % (mce)
                     print "RMSE (individual data points): %.4f" % (rmse)
                     print "Error variance: %.4f" % error_var
-                    print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )
+                    print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )                    
+
+                    if method not in self.auc_all:
+                        self.auc_all[method] = [auc]
+                        self.rmse_all[method] = [rmse]
+                        self.errvar_all[method] = [error_var]
+                        self.mce_all[method] = [mce]
+                        
+                        self.acc_all[method] = [acc]
+                        self.pos_all[method] = [pos_percent]
+                        self.neg_all[method] = [neg_percent]
+                        self.precision_all[method] = [precision]
+                        self.recall_all[method] = [recall]
+                    else:
+                        self.auc_all[method].append(auc)
+                        self.rmse_all[method].append(rmse)
+                        self.errvar_all[method].append(error_var)
+                        self.mce_all[method].append(mce)
         
+                        self.acc_all[method].append(acc)
+                        self.pos_all[method].append(pos_percent)
+                        self.neg_all[method].append(neg_percent)
+                        self.precision_all[method].append(precision)
+                        self.recall_all[method].append(recall)                        
+
+            if np.any(gold_density):
+    
+                gold_density = gold_density.flatten()
+    
+                for method in results:
+                    print ''
+                    print 'Results for %s with %i labels' % (method, Nlabels)
+                    
+                    mced = []
+                    rmsed = []
+                    tau = []                    
+                    
+                    est_density = densityresults[method]
+                    est_density_var = density_var[method].flatten()
+            
                     # assume gold density and est density have 1 row for each class
                     est_density = est_density.flatten()
                     est_density[est_density==0] = 0.0000001
@@ -444,36 +481,15 @@ class Tester(object):
                         tau = 0
                     print "Kendall's Tau (density estimation): %.4f " % tau
         
-                    if method not in self.auc_all:
-                        self.auc_all[method] = [auc]
-                        self.rmse_all[method] = [rmse]
-                        self.errvar_all[method] = [error_var]
-                        self.mce_all[method] = [mce]
-        
+                    if method not in self.tau_all:
                         self.tau_all[method] = [tau]
                         self.rmsed_all[method] = [rmsed]
                         self.mced_all[method] = [mced]
-                        
-                        self.acc_all[method] = [acc]
-                        self.pos_all[method] = [pos_percent]
-                        self.neg_all[method] = [neg_percent]
-                        self.precision_all[method] = [precision]
-                        self.recall_all[method] = [recall]
+
                     else:
-                        self.auc_all[method].append(auc)
-                        self.rmse_all[method].append(rmse)
-                        self.errvar_all[method].append(error_var)
-                        self.mce_all[method].append(mce)
-        
                         self.tau_all[method].append(tau)
                         self.rmsed_all[method].append(rmsed)
                         self.mced_all[method].append(mced)
-                        
-                        self.acc_all[method].append(acc)
-                        self.pos_all[method].append(pos_percent)
-                        self.neg_all[method].append(neg_percent)
-                        self.precision_all[method].append(precision)
-                        self.recall_all[method].append(recall)
     
             # set up next iteration
             self.results_all[Nlabels] = results
