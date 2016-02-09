@@ -123,7 +123,7 @@ if __name__ == '__main__':
         npos = np.sum(C[:, 3] > 0)
         neg_sample_size = 0.5#0.1 # how many of the "no mark" labels to use?
         Nreports = np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
-        Nreps_initial = Nreports #60 #50 # number of labels in first iteration data set. 
+        Nreps_initial = 50 #Nreports #60 #50 # number of labels in first iteration data set. 
         Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
