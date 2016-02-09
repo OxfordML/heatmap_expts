@@ -177,7 +177,7 @@ if __name__ == '__main__':
     result_idxs = {}
     aucs = {}
     
-    sd_use_all = True
+    sd_use_all = False#True
     
     reslevelidxs = {}
     # RUN EVERYTHING SEPARATELY FOR EACH RESOLUTION GROUP
