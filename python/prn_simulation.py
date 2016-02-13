@@ -7,11 +7,11 @@ import sys
 sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
 sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
 
-from scipy.stats import beta, bernoulli, multivariate_normal as mvn
 import prediction_tests
 import numpy as np
 import logging
 import os
+from scipy.stats import norm, gamma
 
 import matplotlib.pyplot as plt
 from matplotlib.mlab import griddata
@@ -106,28 +106,40 @@ methods = [
 
 # Number of datasets
 nruns = 20
-nsteps = 21
+nsteps = 5
 
-featurenames = {'structural_damage_3', 'tarp', 'structural_damage_2'}
+featurenames = ['structural_damage_3', 'tarp', 'structural_damage_2']
+
+neg_sample_size = 0.2#0.5#0.1 # how many of the "no mark" labels to use?
+Nreps_initial = 0.1 # fraction
+
+expt_label_template = 'prn/%s'
+
+def load_data(featurename='structural_damage_3'):
+    C = np.load(prn.Cfile % (featurename, 0))
+    t_all = np.load(prn.goldfile % ('p', featurename))# t_all    
+
+    nneg = np.sum(C[:, 3] == 0)
+    npos = np.sum(C[:, 3] > 0)
+    
+    Nreports = 0.5 * np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
+
+    return C, Nreports, prn.nx, prn.ny, t_all, t_all 
 
 # LOAD THE GOLD DATA ---------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     for featurename in featurenames:
-        C = np.load(prn.Cfile % (featurename, 0))
+        C, Nreports, nx, ny, t_all, _ = load_data(featurename)
+        
+        testidxs = np.load(prn.goldfile % ('idxs', featurename))        
         linear_unique = np.load(prn.goldfile % ('linearidxs', featurename))
-        testidxs = np.load(prn.goldfile % ('idxs', featurename))
-        t_all = np.load(prn.goldfile % ('p', featurename))# t_all
         
         # REPORTS
-        nneg = np.sum(C[:, 3] == 0)
-        npos = np.sum(C[:, 3] > 0)
-        neg_sample_size = 0.5#0.1 # how many of the "no mark" labels to use?
-        Nreports = np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
-        Nreps_initial = 50 #Nreports #60 #50 # number of labels in first iteration data set. 
+        Nreps_initial = Nreports * Nreps_initial #60 #50 # number of labels in first iteration data set. 
         Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
-        expt_label_template = 'prn/%s' % featurename
+        experiment_label = expt_label_template % featurename
         
         J = 2 # number of classes
         L = len(np.unique(C[:, 3])) # number of scores/label types
@@ -139,8 +151,14 @@ if __name__ == '__main__':
         
         # HYPERPARAMETERS ------------------------------------------------------------------------------------------------------
         
-        ls = 40.0 #nx #np.random.randint(1, nx * 2, 1)
-        ls = np.zeros(2) + ls
+        ls = [4, 8, 16, 32, 64] # a range of lengthscales that are a very roughly representative sample from a gamma distribution with shape=1 and scale=30
+        #ls = [24, 32, 48]
+        #ls = [4, 16, 32, 64]#32, 64, 128, 256, 512]#40.0 #nx #np.random.randint(1, nx * 2, 1)
+        #lpls = norm.pdf(ls, loc=24, scale=10) # log probability of the length scale
+        #lpls = lpls / np.sum(lpls)
+        lpls = gamma.logpdf(ls, 2, scale=22) # informative prior over the lengthscales
+        
+        #ls = np.zeros(2) + ls
         print "initial length scale: "
         print ls
         
@@ -149,21 +167,27 @@ if __name__ == '__main__':
         
         z0 = nu0[1] / np.sum(nu0)
         
-        shape_s0 = 10
-        rate_s0 = 4 # chosen so that the prior expected precision is 2.58, corresponding to std of a beta-distributed variable
-        # with hyper-parameters 5, 5. 
+        shape_s0 = 0.5
+        rate_s0 = 10.0 * 0.5        
+         
+#         shape_s0 = 10
+#         rate_s0 = 4 # chosen so that the prior expected precision is 2.58, corresponding to std of a beta-distributed variable
+#         with hyper-parameters 5, 5. 
         alpha0 = np.ones((J, L), dtype=float)
         if J==L:
             alpha0[range(J), range(L)] = 5
         elif featurename=='structural_damage_1':
             alpha0[1, 1] = 2
-            alpha0[0, 0] = 2                 
+            alpha0[0, 0] = 2     
+            alpha0 *= 3            
         elif featurename=='structural_damage_2':
             alpha0[1, 2] = 2
             alpha0[0, 0] = 2
+            alpha0 *= 3
         elif featurename=='structural_damage_3':
             alpha0[1, 3] = 2
             alpha0[0, 0] = 2
+            alpha0 *= 3
         else:
             alpha0[0, 0] = 19
             alpha0[1:, 0] = 15
@@ -172,7 +196,6 @@ if __name__ == '__main__':
 
 
     # MAIN SET OF SYNTHETIC DATA EXPERIMENTS ------------------------------------------------------------------------------
-        experiment_label = expt_label_template 
             
         # RUN TESTS -----------------------------------------------------------------------------------------------------------
         for d in range(nruns):
@@ -208,7 +231,7 @@ if __name__ == '__main__':
                 C_d = C_d.astype(int)
             # Run the tests with the current data set
             tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
-                                             ls[0], optimise=False, verbose=False)            
+                                             ls, optimise=False, verbose=False, lpls=lpls)            
             tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold, Nreps_initial, 
                              Nrep_inc)
             if SAVE_RESULTS:

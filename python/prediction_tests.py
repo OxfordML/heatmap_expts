@@ -41,13 +41,23 @@ from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn, be
 class Tester(object):
         
     def __init__(self, outputdir, methods, Nlabels_all, z0, alpha0_all, nu0, shape_s0, rate_s0, ls_initial=0, 
-                 optimise=True, clusteridxs_all=None, verbose=False):
+                 optimise=True, clusteridxs_all=None, verbose=False, lpls=None):
         
         # Controls whether we optimise hyper-parameters, including length scale
         self.optimise = optimise
         
         # Set this to zero to use the optimal value from the standard GP
         self.ls_initial = ls_initial
+        
+        if isinstance(ls_initial, np.ndarray) or isinstance(ls_initial, list):
+            # we have to marginalise over the list of length scales with uniform prior
+            self.margls = True
+            if np.any(lpls):
+                self.lpls = lpls
+            else:
+                self.lpls = np.zeros(len(ls_initial)) + np.log(1.0 / len(ls_initial))
+        else:
+            self.margls = False
         
         self.shape_s0 = shape_s0
         self.rate_s0 = rate_s0
@@ -184,13 +194,20 @@ class Tester(object):
                 logging.info("Using a density GP without BCC...")
                 # Get values for training points by taking frequencies -- only one report at each location, so give 1 for
                 # positive reports, 0 otherwise
-                if not np.any(self.ls_initial) and self.optimise:
+                
+                if not self.optimise and self.margls:
+                    ls_initial = self.ls_initial
+                    lpls_data = np.zeros(len(ls_initial))
+                    gp_preds = np.zeros((len(ls_initial), len(targetsx))) 
+                    gp_var = np.zeros((len(ls_initial), len(targetsx)))
+                elif not np.any(self.ls_initial) and self.optimise:
                     ls_initial = [2, 10, 50, 100]
                 else:
                     ls_initial = [self.ls_initial]
+                    
                 nlml = np.inf
                 gpgrid_opt = None
-                for ls in ls_initial:
+                for l, ls in enumerate(ls_initial):
                     rate_ls = 2.0 / ls
                     self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, shape_ls=2.0, 
                                          rate_ls=rate_ls)
@@ -202,38 +219,53 @@ class Tester(object):
                                                        (posreports+negreports)[:,np.newaxis]), axis=1), maxfun=100)
                         if self.gpgrid.nlml < nlml:
                             nlml = self.gpgrid.nlml
-                            gpgrid_opt = self.gpgrid                        
+                            gpgrid_opt = self.gpgrid       
                     else:
                         self.gpgrid.fit([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
                                                        (posreports+negreports)[:,np.newaxis]), axis=1) )
+                        if self.margls:
+                            lpls_data[l] = self.lpls[l] + self.gpgrid.lowerbound() 
+                            preds, var = self.gpgrid.predict([targetsx, targetsy], variance_method='sample')
+                            gp_preds[l, :] = preds.reshape(-1)
+                            gp_var[l, :] = var.reshape(-1) 
 
                 if self.ls_initial==0:
                     self.ls_initial = gpgrid_opt.ls[0]
                 if self.optimise:
                     self.gpgrid = gpgrid_opt
                 logging.debug("GP found output scale %.5f" % self.gpgrid.s)
-                gp_preds, gp_var = self.gpgrid.predict([targetsx, targetsy], variance_method='sample')
+                
+                if not self.margls:
+                    gp_preds, gp_var = self.gpgrid.predict([targetsx, targetsy], variance_method='sample')
+                else:
+                    lpls_data -= np.max(lpls_data)                    
+                    pls_data = np.exp(lpls_data)
+                    pls_giv_data = pls_data / np.sum(pls_data)
+                    gp_preds = np.sum(gp_preds * pls_giv_data[:, np.newaxis], axis=0)
+                    gp_var = np.sum(np.sqrt(gp_var) * pls_giv_data[:, np.newaxis], axis=0) ** 2
+                    
+                    print "GP LENGTH SCALE PROBABILITIES:"
+                    print pls_giv_data
+                                        
+                    
                 results['GP'] = gp_preds
                 densityresults['GP'] = gp_preds
                 density_var['GP'] = gp_var
             elif not np.any(self.ls_initial):
                 self.ls_initial = nx
-                
-            logging.info("Chosen self.ls_initial=%.2f" % self.ls_initial)
-                
-            # default hyper-parameter initialisation points for all the GPs used below
-            shape_ls = 2.0
-            rate_ls = shape_ls / self.ls_initial
-    
+                    
             # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
             if 'IBCC+GP' in self.methods:
                 # Should this be dropped from the experiments, as it won't work without gridding the points? --> then run into
                 # question of grid size etc. Choose grid so that squares have an average of 3 reports?
                 logging.info("Running separate IBCC and GP...")
         
-                def train_gp_on_ibcc_output(opt_nx, opt_ny):
+                def train_gp_on_ibcc_output(opt_nx, opt_ny, ls_initial):
                     # set the initial length scale according to the grid size
-                    ls_initial = (self.ls_initial / float(nx)) * opt_nx
+                    ls_initial = (ls_initial / float(nx)) * opt_nx
+                    
+                    # default hyper-parameter initialisation points for all the GPs used below
+                    shape_ls = 2.0
                     rate_ls = shape_ls / ls_initial
                     
                     # run standard IBCC
@@ -314,11 +346,34 @@ class Tester(object):
                 #Nper_grid_sq = [3, 5, 10]
                 #for grouping in Nper_grid_sq:
                 #gridsize = int(np.ceil(len(reportsx) / grouping) )
-                nlml = train_gp_on_ibcc_output(nx, ny)#gridsize, gridsize)
-                logging.debug("NLML = %.2f" % nlml)
-                targetsx_grid = targetsx#(targetsx * gridsize / float(nx)).astype(int)
-                targetsy_grid = targetsy#(targetsy * gridsize / float(ny)).astype(int)
-                gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
+                
+                if self.margls:
+                    gp_preds = np.zeros((len(self.ls_initial), len(targetsx))) 
+                    gp_var = np.zeros((len(self.ls_initial), len(targetsx)))
+                    lpls_data = np.zeros(len(self.ls_initial))
+                    for l, ls_initial in enumerate(self.ls_initial):
+                        nlml = train_gp_on_ibcc_output(nx, ny, ls_initial)#gridsize, gridsize)
+                        logging.debug("NLML = %.2f" % nlml)
+                        targetsx_grid = targetsx#(targetsx * gridsize / float(nx)).astype(int)
+                        targetsy_grid = targetsy#(targetsy * gridsize / float(ny)).astype(int)
+                        gppredsl, gpvarl = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
+                        gp_preds[l, :] = gppredsl.flatten()
+                        gp_var[l, :] = gpvarl.flatten()                    
+                        lpls_data[l] = self.lpls[l] + self.gpgrid2.lowerbound() 
+                      
+                    lpls_data -= np.max(lpls_data)  
+                    pls_data = np.exp(lpls_data)
+                    pls_giv_data = pls_data / np.sum(pls_data)
+                    gp_preds = np.sum(gp_preds * pls_giv_data[:, np.newaxis], axis=0)
+                    gp_var = np.sum(np.sqrt(gp_var) * pls_giv_data[:, np.newaxis], axis=0) ** 2
+                    
+                else:
+                    nlml = train_gp_on_ibcc_output(nx, ny, ls_initial)#gridsize, gridsize)
+                    logging.debug("NLML = %.2f" % nlml)
+                    targetsx_grid = targetsx#(targetsx * gridsize / float(nx)).astype(int)
+                    targetsy_grid = targetsy#(targetsy * gridsize / float(ny)).astype(int)
+                    gp_preds, gp_var = self.gpgrid2.predict([targetsx_grid, targetsy_grid], variance_method='sample')
+                    
                 #results['IBCC+GP_%i' % grouping] = gp_preds
                 #densityresults['IBCC+GP_%i' % grouping] = gp_preds
                 #density_var['IBCC+GP_%i' % grouping] = gp_var
@@ -349,26 +404,77 @@ class Tester(object):
     
             # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
-                #HEATMAPBCC OBJECT
-                self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
-                              rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
-                self.heatmapcombiner.min_iterations = 4
-                self.heatmapcombiner.max_iterations = 200
-                self.heatmapcombiner.verbose = self.verbose
-                self.heatmapcombiner.uselowerbound = True
                 
-                logging.info("Running HeatmapBCC...")
-                # to do:
-                # make sure optimise works
-                # make sure the optimal hyper-parameters are passed to the next iteration
-                #self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
-                self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
-                logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
-    
-                bcc_pred, rho_mean, rho_var = self.heatmapcombiner.predict(targetsx, targetsy, variance_method='sample')
-                results['HeatmapBCC'] = bcc_pred[1, :] # only interested in positive "damage class"
-                densityresults['HeatmapBCC'] = rho_mean[1, :]
-                density_var['HeatmapBCC'] = rho_var[1, :]
+                if self.margls:
+                    bcc_pred = np.zeros((len(self.ls_initial), len(targetsx))) 
+                    rho_mean = np.zeros((len(self.ls_initial), len(targetsx)))
+                    rho_var = np.zeros((len(self.ls_initial), len(targetsx)))
+
+                    lpls_data = np.zeros(len(self.ls_initial))
+
+                    for l, ls_initial in enumerate(self.ls_initial):                    
+                    
+                        # default hyper-parameter initialisation points for all the GPs used below
+                        shape_ls = 2.0
+                        rate_ls = shape_ls / ls_initial                    
+                    
+                        #HEATMAPBCC OBJECT
+                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
+                                      rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+                        self.heatmapcombiner.min_iterations = 4
+                        self.heatmapcombiner.max_iterations = 200
+                        self.heatmapcombiner.verbose = self.verbose
+                        self.heatmapcombiner.uselowerbound = True
+                        
+                        logging.info("Running HeatmapBCC...")
+                        # to do:
+                        # make sure optimise works
+                        # make sure the optimal hyper-parameters are passed to the next iteration
+                        #self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
+                        self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
+                        logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
+            
+                        pred, densitymean, densityvar = self.heatmapcombiner.predict(targetsx, targetsy, variance_method='sample')
+                        bcc_pred[l, :] = pred[1, :]
+                        rho_mean[l, :] = densitymean[1, :]
+                        rho_var[l, :] = densityvar[1, :]
+                        
+                        lpls_data[l] = self.lpls[l] + self.heatmapcombiner.lowerbound() 
+            
+                    lpls_data -= np.max(lpls_data)
+                    pls_data = np.exp(lpls_data)
+                    pls_giv_data = pls_data / np.sum(pls_data)
+                    
+                    print "LENGTH SCALE PROBABILITIES:"
+                    print pls_giv_data
+                    
+                    bcc_pred = np.sum(bcc_pred * pls_giv_data[:, np.newaxis], axis=0)
+                    rho_mean = np.sum(rho_mean * pls_giv_data[:, np.newaxis], axis=0)
+                    rho_var = np.sum(np.sqrt(rho_var) * pls_giv_data[:, np.newaxis], axis=0) ** 2
+                else:                
+                    #HEATMAPBCC OBJECT
+                    self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
+                                  rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+                    self.heatmapcombiner.min_iterations = 4
+                    self.heatmapcombiner.max_iterations = 200
+                    self.heatmapcombiner.verbose = self.verbose
+                    self.heatmapcombiner.uselowerbound = True
+                    
+                    logging.info("Running HeatmapBCC...")
+                    # to do:
+                    # make sure optimise works
+                    # make sure the optimal hyper-parameters are passed to the next iteration
+                    #self.heatmapcombiner.clusteridxs_alpha0 = clusteridxs
+                    self.heatmapcombiner.combine_classifications(C, optimise_hyperparams=self.optimise)
+                    logging.debug("output scale: %.5f" % self.heatmapcombiner.heatGP[1].s)
+        
+                    bcc_pred, rho_mean, rho_var = self.heatmapcombiner.predict(targetsx, targetsy, variance_method='sample')
+                    bcc_pred = bcc_pred[1, :] # only interested in positive "damage class"
+                    rho_mean = rho_mean[1, :]
+                    rho_var = rho_var[1, :]
+                results['HeatmapBCC'] = bcc_pred
+                densityresults['HeatmapBCC'] = rho_mean
+                density_var['HeatmapBCC'] = rho_var
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             if np.any(building_density):
