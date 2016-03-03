@@ -97,8 +97,149 @@ class Tester(object):
         self.ibcc_combiner = None
         
         self.verbose = verbose
+        
+        self.ignore_report_point_density = False
     
-    def run_tests(self, C_all, nx, ny, targetsx, targetsy, building_density, gold_density, Nlabels, Nrep_inc):
+    def evaluate_discrete(self, results, Nlabels, gold_labels):
+        evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
+        
+        for method in results:
+            print ''
+            print 'Results for %s with %i labels' % (method, Nlabels)
+            
+            pred = results[method]
+            
+            best_thresholds = []
+            testresults = pred.flatten()
+            testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
+            testresults[testresults==1] = 0.999999
+
+            pos_percent = (np.sum(testresults >= 0.5) / float(len(testresults)))
+            neg_percent = (np.sum(testresults < 0.5) / float(len(testresults)))
+
+            testresults = testresults[gold_labels>=0]
+            gold_labels_i = gold_labels[gold_labels>=0]
+
+            #Use only confident labels -- useful for e.g. PRN
+            testresults = testresults[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
+            gold_labels_i = gold_labels_i[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
+
+            # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
+            mce = - np.sum(gold_labels_i * np.log(testresults)) - np.sum((1-gold_labels_i) * np.log(1 - testresults))
+            mce = mce / float(len(gold_labels_i))
+            
+            rmse = np.sqrt( np.mean((testresults - gold_labels_i)**2) )
+            error_var = np.var(testresults - gold_labels_i)
+
+            discrete_gold = np.round(gold_labels_i)
+
+            auc_by_class, _, _ = evaluator.eval_auc(testresults, discrete_gold)
+            if testresults.ndim == 2:
+                auc = np.sum(np.bincount(discrete_gold) * auc_by_class) / len(discrete_gold)
+            else:
+                auc = auc_by_class
+            
+            acc = np.sum(np.round(testresults)==discrete_gold) / float(len(gold_labels_i))
+            tp = np.sum((testresults >= 0.5) & (gold_labels_i >= 0.5))
+            fp = np.sum((testresults >= 0.5) & (gold_labels_i < 0.5))
+            if tp > 0:
+                precision = tp / float(tp + fp)
+            else:
+                precision = 0
+                
+            recall = tp / float(np.sum(gold_labels_i >= 0.5 ))
+            print "Classification accuracy: %.4f" % acc
+            print "Percentage marked as +ve: %.4f" % pos_percent
+            print "Percentage marked as -ve: %.4f" % neg_percent
+            print "Precision: %.4f" % precision
+            print "Recall: %.4f" % recall
+    
+            print "Cross entropy (individual data points): %.4f" % (mce)
+            print "RMSE (individual data points): %.4f" % (rmse)
+            print "Error variance: %.4f" % error_var
+            print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(gold_labels)) )                    
+
+            if method not in self.auc_all:
+                self.auc_all[method] = [auc]
+                self.rmse_all[method] = [rmse]
+                self.errvar_all[method] = [error_var]
+                self.mce_all[method] = [mce]
+                
+                self.acc_all[method] = [acc]
+                self.pos_all[method] = [pos_percent]
+                self.neg_all[method] = [neg_percent]
+                self.precision_all[method] = [precision]
+                self.recall_all[method] = [recall]
+            else:
+                self.auc_all[method].append(auc)
+                self.rmse_all[method].append(rmse)
+                self.errvar_all[method].append(error_var)
+                self.mce_all[method].append(mce)
+
+                self.acc_all[method].append(acc)
+                self.pos_all[method].append(pos_percent)
+                self.neg_all[method].append(neg_percent)
+                self.precision_all[method].append(precision)
+                self.recall_all[method].append(recall)          
+                     
+    def evaluate_density(self, densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny):
+   
+        gold_density_i = gold_density.flatten()
+
+        for method in densityresults:
+            print ''
+            print 'Results for %s with %i labels' % (method, Nlabels)
+            
+            mced = []
+            rmsed = []
+            tau = []                    
+            
+            est_density = densityresults[method]
+            est_density_var = density_var[method].flatten()
+    
+            # assume gold density and est density have 1 row for each class
+            est_density = est_density.flatten()
+            est_density[est_density==0] = 0.0000001
+            est_density[est_density==1] = 0.9999999
+            
+            # ignore points with reports
+            if self.ignore_report_point_density:
+                #idxs with reports
+                repids = np.unique(np.ravel_multi_index((C_all[:, 1], C_all[:, 2]), dims=(nx, ny)))
+                targetids = np.ravel_multi_index((targetsx, targetsy), dims=(nx, ny))
+                nonreppoints = np.logical_not(np.in1d(targetids, repids))
+                est_density = est_density[nonreppoints]
+                est_density_var = est_density_var[nonreppoints]
+                gold_density_i = gold_density.flatten()[nonreppoints]  
+                
+            #remove any blanked out locations where density is invalid
+            est_density = est_density[gold_density_i >= 0]     
+            est_density_var = est_density_var[gold_density_i >= 0]
+            gold_density_i = gold_density_i[gold_density_i >= 0]                                      
+
+            mced = nlpd_beta(gold_density_i, est_density, est_density_var) 
+            print "Cross entropy (density estimation): %.4f" % mced
+
+            rmsed = np.sqrt( np.mean((est_density - gold_density_i)**2) )
+            print "RMSE (density estimation): %.4f" % rmsed
+
+            tau, _ = kendalltau(est_density, gold_density_i)
+            if np.isnan(tau):
+                print "Kendall's Tau --> NaNs are mapped to zero for plotting"
+                tau = 0
+            print "Kendall's Tau (density estimation): %.4f " % tau
+
+            if method not in self.tau_all:
+                self.tau_all[method] = [tau]
+                self.rmsed_all[method] = [rmsed]
+                self.mced_all[method] = [mced]
+
+            else:
+                self.tau_all[method].append(tau)
+                self.rmsed_all[method].append(rmsed)
+                self.mced_all[method].append(mced)        
+    
+    def run_tests(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
 
         C = C_all
     
@@ -126,7 +267,7 @@ class Tester(object):
             reportsx = C[:, 1]
             reportsy = C[:, 2]
     
-            # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
+# KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
             if 'KDE' in self.methods:
                 # Method used here performs automatic bandwidth determination - see help docs
                 posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
@@ -188,7 +329,7 @@ class Tester(object):
                 
                 logging.info("KDE complete.")
     
-            # TRAIN GP WITHOUT BCC. Train using sample of ground truth density (not reports) to test if GP works--------            
+# TRAIN GP WITHOUT BCC. Train using sample of ground truth density (not reports) to test if GP works--------            
             if 'GP' in self.methods:      
                 
                 logging.info("Using a density GP without BCC...")
@@ -253,8 +394,8 @@ class Tester(object):
                 density_var['GP'] = gp_var
             elif not np.any(self.ls_initial):
                 self.ls_initial = nx
-                    
-            # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
+                               
+# RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
             if 'IBCC+GP' in self.methods:
                 # Should this be dropped from the experiments, as it won't work without gridding the points? --> then run into
                 # question of grid size etc. Choose grid so that squares have an average of 3 reports?
@@ -368,7 +509,7 @@ class Tester(object):
                     gp_var = np.sum(np.sqrt(gp_var) * pls_giv_data[:, np.newaxis], axis=0) ** 2
                     
                 else:
-                    nlml = train_gp_on_ibcc_output(nx, ny, ls_initial)#gridsize, gridsize)
+                    nlml = train_gp_on_ibcc_output(nx, ny, self.ls_initial)#gridsize, gridsize)
                     logging.debug("NLML = %.2f" % nlml)
                     targetsx_grid = targetsx#(targetsx * gridsize / float(nx)).astype(int)
                     targetsy_grid = targetsy#(targetsy * gridsize / float(ny)).astype(int)
@@ -381,7 +522,7 @@ class Tester(object):
                 densityresults['IBCC+GP'] = gp_preds
                 density_var['IBCC+GP'] = gp_var
                     
-            # RUN IBCC -- will only detect the report locations properly, otherwise defaults to kappa ------------------
+# RUN IBCC -- will only detect the report locations properly, otherwise defaults to kappa ------------------
             if 'IBCC' in self.methods:
                 self.ibcc2 = IBCC(2, 2, alpha0, self.nu0, K, uselowerbound=True)                
                 self.ibcc2.clusteridxs_alpha0 = clusteridxs
@@ -402,7 +543,7 @@ class Tester(object):
                 densityresults['IBCC'] = results['IBCC']
                 density_var['IBCC'] = np.zeros(len(results['IBCC']))
     
-            # RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
+# RUN HEAT MAP BCC ---------------------------------------------------------------------------------------------        
             if 'HeatmapBCC' in self.methods:
                 
                 if self.margls:
@@ -451,7 +592,10 @@ class Tester(object):
                     bcc_pred = np.sum(bcc_pred * pls_giv_data[:, np.newaxis], axis=0)
                     rho_mean = np.sum(rho_mean * pls_giv_data[:, np.newaxis], axis=0)
                     rho_var = np.sum(np.sqrt(rho_var) * pls_giv_data[:, np.newaxis], axis=0) ** 2
-                else:                
+                else:       
+                    shape_ls = 2.0
+                    rate_ls = shape_ls / self.ls_initial
+                             
                     #HEATMAPBCC OBJECT
                     self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
                                   rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
@@ -476,127 +620,13 @@ class Tester(object):
                 densityresults['HeatmapBCC'] = rho_mean
                 density_var['HeatmapBCC'] = rho_var
     
-            # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
-            if np.any(building_density):
-                evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
-                
-                for method in results:
-                    print ''
-                    print 'Results for %s with %i labels' % (method, Nlabels)
-                    
-                    pred = results[method]
-                    
-                    best_thresholds = []
-                    testresults = pred.flatten()
-                    testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
-                    testresults[testresults==1] = 0.999999
-    
-                    pos_percent = (np.sum(testresults >= 0.5) / float(len(testresults)))
-                    neg_percent = (np.sum(testresults < 0.5) / float(len(testresults)))
-    
-                    testresults = testresults[building_density>=0]
-                    building_density = building_density[building_density>=0]
-
-                    # This will be the same as MCED unless we "snap-to-grid" so that reports and test locations overlap
-                    mce = - np.sum(building_density * np.log(testresults)) - np.sum((1-building_density) * np.log(1 - testresults))
-                    mce = mce / float(len(building_density))
-                    
-                    rmse = np.sqrt( np.mean((testresults - building_density)**2) )
-                    error_var = np.var(testresults - building_density)
-    
-                    discrete_gold = np.round(building_density)
-    
-                    auc_by_class, _, _ = evaluator.eval_auc(testresults, discrete_gold)
-                    if testresults.ndim == 2:
-                        auc = np.sum(np.bincount(discrete_gold) * auc_by_class) / len(discrete_gold)
-                    else:
-                        auc = auc_by_class
-                    
-                    acc = np.sum(np.round(testresults)==discrete_gold) / float(len(building_density))
-                    tp = np.sum((testresults >= 0.5) & (building_density >= 0.5))
-                    fp = np.sum((testresults >= 0.5) & (building_density < 0.5))
-                    if tp > 0:
-                        precision = tp / float(tp + fp)
-                    else:
-                        precision = 0
-                        
-                    recall = tp / float(np.sum(building_density >= 0.5 ))
-                    print "Classification accuracy: %.4f" % acc
-                    print "Percentage marked as +ve: %.4f" % pos_percent
-                    print "Percentage marked as -ve: %.4f" % neg_percent
-                    print "Precision: %.4f" % precision
-                    print "Recall: %.4f" % recall
-            
-                    print "Cross entropy (individual data points): %.4f" % (mce)
-                    print "RMSE (individual data points): %.4f" % (rmse)
-                    print "Error variance: %.4f" % error_var
-                    print "AUC (individual data points): %.4f; best threshold %.2f" % (auc, np.sum(best_thresholds) / float(len(building_density)) )                    
-
-                    if method not in self.auc_all:
-                        self.auc_all[method] = [auc]
-                        self.rmse_all[method] = [rmse]
-                        self.errvar_all[method] = [error_var]
-                        self.mce_all[method] = [mce]
-                        
-                        self.acc_all[method] = [acc]
-                        self.pos_all[method] = [pos_percent]
-                        self.neg_all[method] = [neg_percent]
-                        self.precision_all[method] = [precision]
-                        self.recall_all[method] = [recall]
-                    else:
-                        self.auc_all[method].append(auc)
-                        self.rmse_all[method].append(rmse)
-                        self.errvar_all[method].append(error_var)
-                        self.mce_all[method].append(mce)
-        
-                        self.acc_all[method].append(acc)
-                        self.pos_all[method].append(pos_percent)
-                        self.neg_all[method].append(neg_percent)
-                        self.precision_all[method].append(precision)
-                        self.recall_all[method].append(recall)                        
+# EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
+            if np.any(gold_labels):
+                self.evaluate_discrete(results, Nlabels, gold_labels)
 
             if np.any(gold_density):
-    
-                gold_density = gold_density.flatten()
-    
-                for method in results:
-                    print ''
-                    print 'Results for %s with %i labels' % (method, Nlabels)
-                    
-                    mced = []
-                    rmsed = []
-                    tau = []                    
-                    
-                    est_density = densityresults[method]
-                    est_density_var = density_var[method].flatten()
-            
-                    # assume gold density and est density have 1 row for each class
-                    est_density = est_density.flatten()
-                    est_density[est_density==0] = 0.0000001
-                    est_density[est_density==1] = 0.9999999
-        
-                    mced = nlpd_beta(gold_density, est_density, est_density_var) 
-                    print "Cross entropy (density estimation): %.4f" % mced
-        
-                    rmsed = np.sqrt( np.mean((est_density - gold_density)**2) )
-                    print "RMSE (density estimation): %.4f" % rmsed
-        
-                    tau, _ = kendalltau(est_density, gold_density)
-                    if np.isnan(tau):
-                        print "Kendall's Tau --> NaNs are mapped to zero for plotting"
-                        tau = 0
-                    print "Kendall's Tau (density estimation): %.4f " % tau
-        
-                    if method not in self.tau_all:
-                        self.tau_all[method] = [tau]
-                        self.rmsed_all[method] = [rmsed]
-                        self.mced_all[method] = [mced]
+                self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)
 
-                    else:
-                        self.tau_all[method].append(tau)
-                        self.rmsed_all[method].append(rmsed)
-                        self.mced_all[method].append(mced)
-    
             # set up next iteration
             self.results_all[Nlabels] = results
             self.densityresults_all[Nlabels] = densityresults
@@ -607,6 +637,39 @@ class Tester(object):
                 Nlabels += Nrep_inc
                 if C_all.shape[0] < Nlabels:
                     Nlabels = C_all.shape[0]
+                    
+    def reevaluate(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
+        
+        self.results_all = np.load(self.outputdir + "results.npy").item()
+        self.densityresults_all = np.load(self.outputdir + "density_results.npy").item()
+        self.densityVar_all = np.load(self.outputdir + "density_var.npy").item()
+        
+        while Nlabels <= self.Nlabels_all:
+
+            print self.results_all.keys()
+
+            results = self.results_all[Nlabels]
+            densityresults = self.densityresults_all[Nlabels]
+            density_var = self.densityVar_all[Nlabels]
+    
+            # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
+            if np.any(gold_labels):
+                self.evaluate_discrete(results, Nlabels, gold_labels)
+
+            if np.any(gold_density):
+                self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)
+
+    
+            # set up next iteration
+            self.results_all[Nlabels] = results
+            self.densityresults_all[Nlabels] = densityresults
+            self.densityVar_all[Nlabels] = density_var
+            if Nlabels==C_all.shape[0]:
+                break
+            else:
+                Nlabels += Nrep_inc
+                if C_all.shape[0] < Nlabels:
+                    Nlabels = C_all.shape[0]                    
     
     
     def save_separate_results(self):

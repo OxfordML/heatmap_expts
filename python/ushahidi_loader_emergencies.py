@@ -11,12 +11,13 @@ import logging, os
 import numpy as np
 from gen_synthetic import dataset_location
 from ushahididata import UshahidiDataHandler
-import prediction_tests
+# from prediction_tests import Tester
+from reevaluate import Tester
 from scipy.sparse import coo_matrix
 
 RELOAD_GOLD = False # load the gold data from file, or compute from scratch?
 
-expt_label_template = "/ushahidi_emergencies2/"
+expt_label_template = "/ushahidi_emergencies3/"
     
 nruns = 20 # can use different random subsets of the reports C
 
@@ -195,7 +196,7 @@ if __name__ == '__main__':
         outputdir, _ = dataset_location(expt_label_template, dataset_label)         
         
         # Run the tests with the current data set
-        tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
+        tester = Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
                 ls, optimise=False, verbose=False)            
                 
         tester.run_tests(C, nx, ny, xtest_d, ytest_d, gold_d, golddensity_d, Nreps_initial, Nrep_inc)

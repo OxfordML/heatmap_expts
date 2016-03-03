@@ -7,7 +7,7 @@ import sys
 sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
 sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
 
-import prediction_tests
+from prediction_tests import Tester
 import numpy as np
 import logging
 import os
@@ -39,7 +39,6 @@ def logit(g):
 # DATA GENERATION --------------------------------------------------------------------------------------------------
 def dataset_location(experiment_label, dataset_label):
     # ID of the data set
-    #output 5 was most working one so far
     outputdir = "./data/" + experiment_label + '/'
     
     if not os.path.isdir(outputdir):
@@ -108,12 +107,13 @@ methods = [
 nruns = 20
 nsteps = 5
 
-featurenames = ['structural_damage_3', 'tarp', 'structural_damage_2']
+featurenames = ['tarp', 'structural_damage_2']#['structural_damage_3', 'tarp', 'structural_damage_2']
 
 neg_sample_size = 0.2#0.5#0.1 # how many of the "no mark" labels to use?
-Nreps_initial = 0.1 # fraction
+Nreps_initial_fraction = 0.1
 
-expt_label_template = 'prn/%s'
+topdir = 'prn2/'
+expt_label_template = topdir + '%s'
 
 def load_data(featurename='structural_damage_3'):
     C = np.load(prn.Cfile % (featurename, 0))
@@ -122,6 +122,7 @@ def load_data(featurename='structural_damage_3'):
     nneg = np.sum(C[:, 3] == 0)
     npos = np.sum(C[:, 3] > 0)
     
+    #0.5 used in successful expmts
     Nreports = 0.5 * np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
 
     return C, Nreports, prn.nx, prn.ny, t_all, t_all 
@@ -135,7 +136,7 @@ if __name__ == '__main__':
         linear_unique = np.load(prn.goldfile % ('linearidxs', featurename))
         
         # REPORTS
-        Nreps_initial = Nreports * Nreps_initial #60 #50 # number of labels in first iteration data set. 
+        Nreps_initial = Nreports * Nreps_initial_fraction #60 #50 # number of labels in first iteration data set. 
         Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
@@ -230,9 +231,13 @@ if __name__ == '__main__':
             if snap_to_grid:
                 C_d = C_d.astype(int)
             # Run the tests with the current data set
-            tester = prediction_tests.Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
-                                             ls, optimise=False, verbose=False, lpls=lpls)            
-            tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold, Nreps_initial, 
+            tester = Tester(outputdir, methods, Nreports, z0, alpha0, nu0, shape_s0, rate_s0, 
+                                             ls, optimise=False, verbose=False, lpls=lpls)
+            tester.ignore_report_point_density = True
+            t_test_gold_density = np.copy(t_test_gold)
+            # ignore locations where the gold is undecided, even for the density estimator
+            t_test_gold_density[(t_test_gold_density > 0.1) & (t_test_gold_density < 0.9)] = -1          
+            tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold_density, Nreps_initial, 
                              Nrep_inc)
             if SAVE_RESULTS:
                 tester.save_separate_results()

@@ -12,10 +12,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 
-# import gen_synthetic as expmt_module
+# import run_synthetic_bias as expmt_module
+import run_synthetic_noise as expmt_module
 # import ushahidi_loader_damage as expmt_module
 #import ushahidi_loader_emergencies as expmt_module
-import prn_simulation as expmt_module
+#import prn_simulation as expmt_module
 
 if hasattr(expmt_module, 'cluster_spreads'):
     cluster_spreads = expmt_module.cluster_spreads
@@ -24,7 +25,7 @@ elif hasattr(expmt_module, 'featurenames'):
 else:
     cluster_spreads = [0]
 
-nruns = 9#expmt_module.nruns
+nruns = expmt_module.nruns
 if hasattr(expmt_module, 'weak_proportions'):
     weak_proportions = expmt_module.weak_proportions
 else:
@@ -34,13 +35,13 @@ def get_output_dir(d, p, p_idx, cluster_spread):
     if p==-1:
         dataset_label = "d%i" % d # no proportion indices
     else:
-        dataset_label = "p%i_d%i" % (p_idx, d)
+        dataset_label = "p%f_d%i" % (p, d)
     
     expt_label = expmt_module.expt_label_template
     if '%' in expt_label:
         expt_label = expt_label % cluster_spread
          
-    logging.info("Loading results for proportion %i, Dataset %d, cluster spread %s" % (p_idx, d, str(cluster_spread)))
+    logging.info("Loading results for proportion %f, Dataset %d, cluster spread %s" % (p, d, str(cluster_spread)))
     outputdir, _ = expmt_module.dataset_location(expt_label, dataset_label)
     return outputdir
 
@@ -75,12 +76,16 @@ def load_mean_results(nruns, weak_proportions, filename):
     return mean_results, std_results, methods
 
 if __name__ == '__main__':
-    # import settings from where the experiments were run    
-    Nreps_initial = expmt_module.Nreps_initial
     if hasattr(expmt_module, 'Nreports'):
         Nreports = expmt_module.Nreports
     else:
         _, Nreports, _, _, _, _ = expmt_module.load_data()
+    
+    # import settings from where the experiments were run
+    if hasattr(expmt_module, "Nreps_initial"):
+        Nreps_initial = expmt_module.Nreps_initial
+    else:
+        Nreps_initial = expmt_module.Nreps_initial_fraction * Nreports
         
     if Nreps_initial < 1:
         Nreps_initial = Nreps_initial * Nreports # Nreps_initial is the initial fraction
@@ -102,45 +107,80 @@ if __name__ == '__main__':
     
     # load results for the density estimation        
     # Root mean squared error
-    rmsed, _, methods = load_mean_results(nruns, weak_proportions, "rmsed.npy")
+    rmsed, rmsed_std, methods = load_mean_results(nruns, weak_proportions, "rmsed.npy")
      
-    for p in weak_proportions:
+    for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:
             plt.figure()
             plt.title('Root Mean Square Error of Density Estimates')
             for i, m in enumerate(methods):
-                plt.plot(Nreps_iter, rmsed[p][cs][m], label='%.2f reliable, %s' % (p, m))
+                if p!=-1:
+                    label = '%.2f reliable, %s' % (p, m)
+                else:
+                    label = m                
+                plt.plot(Nreps_iter, rmsed[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
             plt.ylabel('RMSE')
-            plt.ylim(0, 1.0)
+            #plt.ylim(0, 1.0)
             plt.legend(loc='best')
+            plt.grid(True)
+            for i, m in enumerate(methods):
+                plt.fill_between(Nreps_iter, rmsed[p][cs][m] - rmsed_std[p][cs][m], rmsed[p][cs][m] + rmsed_std[p][cs][m], 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
+            
+            outputdir = get_output_dir(0, p, p_idx, cs)
+            plt.savefig(outputdir + "/rmsed.pdf")
       
     # Kendall's Tau
-    tau, _, methods = load_mean_results(nruns, weak_proportions, "tau.npy")
+    tau, tau_std, methods = load_mean_results(nruns, weak_proportions, "tau.npy")
   
-    for p in weak_proportions:
+    for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
             plt.figure()
             plt.title("Kendall's Tau for Density Estimates")
             for i, m in enumerate(methods):
-                plt.plot(Nreps_iter, tau[p][cs][m], label='%.2f reliable, %s' % (p, m))
+                if p!=-1:
+                    label = '%.2f reliable, %s' % (p, m)
+                else:
+                    label = m
+                plt.plot(Nreps_iter, tau[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
             plt.ylabel('tau')
-            plt.ylim(-1.0, 1.0)
+            #plt.ylim(-1.0, 1.0)
             plt.legend(loc='best')
+            plt.grid(True)
+       
+            for i, m in enumerate(methods):
+                plt.fill_between(Nreps_iter, tau[p][cs][m] - tau_std[p][cs][m], tau[p][cs][m] + tau_std[p][cs][m], 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
+            
+            outputdir = get_output_dir(0, p, p_idx, cs)
+            plt.savefig(outputdir + "/tau.pdf")       
        
     # Mean Cross Entropy
-    mced, _, methods = load_mean_results(nruns, weak_proportions, "mced.npy")
-     
-    for p in weak_proportions:
+    mced, mced_std, methods = load_mean_results(nruns, weak_proportions, "mced.npy")
+    for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
             plt.figure()
-            plt.title("Mean Cross Entropy of Density Estimates")
+            plt.title("Negative Log Probability Density of Density Estimates")
             for i, m in enumerate(methods):
-                plt.plot(Nreps_iter, mced[p][cs][m], label='%.2f reliable, %s' % (p, m))
+                if p!=-1:
+                    label = '%.2f reliable, %s' % (p, m)
+                else:
+                    label = m
+                plt.plot(Nreps_iter, np.log2(np.e) * mced[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
-            plt.ylabel('MCE')
-            plt.legend(loc='best')    
+            plt.ylabel('NLPD or Cross Entropy (bits)')
+            plt.legend(loc='best')
+            plt.grid(True)
+            
+            for i, m in enumerate(methods):
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (mced[p][cs][m] - mced_std[p][cs][m]), 
+                                 np.log2(np.e) * (mced[p][cs][m] + mced_std[p][cs][m]), 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
+            
+            outputdir = get_output_dir(0, p, p_idx, cs)
+            plt.savefig(outputdir + "/mce_density.pdf")            
      
     # load results for predicting individual data points
     # Brier score
@@ -158,51 +198,90 @@ if __name__ == '__main__':
                 plt.plot(Nreps_iter, rmse[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
             plt.ylabel('Brier Score')
-            plt.ylim(0, 1.0)
+            #plt.ylim(0, 1.0)
             plt.legend(loc='best')
+            plt.grid(True)
             
             for i, m in enumerate(methods):
                 plt.fill_between(Nreps_iter, rmse[p][cs][m] - rmse_std[p][cs][m], rmse[p][cs][m] + rmse_std[p][cs][m], 
-                                 alpha=0.4, edgecolor=colors[i], facecolor=colors[i])
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])
         
             outputdir = get_output_dir(0, p, p_idx, cs)
-            plt.savefig(outputdir + "/brier.png") 
+            plt.savefig(outputdir + "/brier.pdf") 
          
     # AUC
-    auc, _, methods = load_mean_results(nruns, weak_proportions, "auc.npy")
+    auc, auc_std, methods = load_mean_results(nruns, weak_proportions, "auc.npy")
     for p in weak_proportions:
         for cs in cluster_spreads:        
             plt.figure()
-            plt.title("AUC when Predicting Individual Data Points")
+            plt.title("AUC")
             for i, m in enumerate(methods):
-                plt.plot(Nreps_iter, auc[p][cs][m], label='%.2f reliable, %s' % (p, m))
+                if p!=-1:
+                    label = '%.2f reliable, %s'  % (p, m)
+                else:
+                    label = m
+                plt.plot(Nreps_iter, auc[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
             plt.ylabel('AUC')
-            plt.ylim(0, 1.0)
+            #plt.ylim(0, 1.0)
             plt.legend(loc='best')
+            plt.grid(True)
+
+            for i, m in enumerate(methods):
+                plt.fill_between(Nreps_iter, auc[p][cs][m] - auc_std[p][cs][m], auc[p][cs][m] + auc_std[p][cs][m], 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
+            
+            outputdir = get_output_dir(0, p, p_idx, cs)
+            plt.savefig(outputdir + "/auc.pdf")
      
     # Mean cross entropy
     cross_entropy, cross_entropy_std, methods = load_mean_results(nruns, weak_proportions, "mce.npy")
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
             plt.figure()
-            plt.title("Cross Entropy")
+            plt.title("Cross Entropy (Negative Log Probability) of Classifications")
             for i, m in enumerate(methods):
                 if p!=-1:
                     label = '%.2f reliable, %s'  % (p, m)
                 else:
                     label = m
-                plt.plot(Nreps_iter, cross_entropy[p][cs][m], label=label)
+                plt.plot(Nreps_iter, np.log2(np.e) * cross_entropy[p][cs][m], label=label, color=colors[i])
             plt.xlabel('Number of crowdsourced labels')
-            plt.ylabel('Cross Entropy (nats)')
+            plt.ylabel('Cross Entropy (bits)')
             plt.legend(loc='best')
+            plt.grid(True)
             
             for i, m in enumerate(methods):
-                plt.fill_between(Nreps_iter, cross_entropy[p][cs][m] - cross_entropy_std[p][cs][m], cross_entropy[p][cs][m] + cross_entropy_std[p][cs][m], 
-                                 alpha=0.4, edgecolor=colors[i], facecolor=colors[i])           
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (cross_entropy[p][cs][m] - cross_entropy_std[p][cs][m]),
+                                 np.log2(np.e) * (cross_entropy[p][cs][m] + cross_entropy_std[p][cs][m]), 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
             
             outputdir = get_output_dir(0, p, p_idx, cs)
-            plt.savefig(outputdir + "/mce_data.png")
+            plt.savefig(outputdir + "/mce_discrete.pdf")
+            print "saving to %s" % outputdir
+
+    acc, acc_std, methods = load_mean_results(nruns, weak_proportions, "acc.npy")
+    for p_idx, p in enumerate(weak_proportions):
+        for cs in cluster_spreads:        
+            plt.figure()
+            plt.title("Classification Accuracy")
+            for i, m in enumerate(methods):
+                if p!=-1:
+                    label = '%.2f reliable, %s'  % (p, m)
+                else:
+                    label = m
+                plt.plot(Nreps_iter, acc[p][cs][m], label=label, color=colors[i])
+            plt.xlabel('Number of crowdsourced labels')
+            plt.ylabel('Fraction of Points Correctly Classified')
+            plt.legend(loc='best')
+            plt.grid(True)
+            
+            for i, m in enumerate(methods):
+                plt.fill_between(Nreps_iter, acc[p][cs][m] - acc_std[p][cs][m], acc[p][cs][m] + acc_std[p][cs][m], 
+                                 alpha=0.2, edgecolor=colors[i], facecolor=colors[i])           
+            
+            outputdir = get_output_dir(0, p, p_idx, cs)
+            plt.savefig(outputdir + "/acc.pdf")
             print "saving to %s" % outputdir
                     
     # Variances within a single dataset
