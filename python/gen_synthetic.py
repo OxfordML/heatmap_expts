@@ -49,7 +49,7 @@ SAVE_RESULTS = True
 
 methods = [
            'KDE',
-           'IBCC',
+           #'IBCC',
            'GP',
            'IBCC+GP',
            'HeatmapBCC'

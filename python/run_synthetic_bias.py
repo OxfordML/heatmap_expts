@@ -45,14 +45,5 @@ bias_weak[0] = 5.0
 
 expt_label_template = 'synth/output_cluslocs%.2f_bias_grid5'
 
-# Flag indicates whether we should snap report locations to their nearest grid location.
-# Doing so means that we assume reports relate to the whole grid square, and that different sources relate to the same
-# t object. We could reduce problems with this discretization step if we use soft snapping based on distance.
-# When set to true, the model predicts the state of each grid location, and the latent density of states. Lots of 
-# reports at same place does not necessarily imply high density, which makes sense if there is only a single emergency. 
-# When set to false, the model predicts the density of reports at each location, if the reports were accurate,
-# and assumes that reports may relate to different events at the same location.   
-snap_to_grid = True
-
 if __name__ == '__main__':    
     gs.run_experiments(expt_label_template, 1, gs.nruns, 2, gs.nproportions)
