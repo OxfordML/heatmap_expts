@@ -46,8 +46,6 @@ if __name__ == '__main__':
     latmarks = dataframe["lat_mark"]
     longmarks = dataframe["long_mark"]
     
-
-    
     N = latmarks.shape[0]
         
     marks = np.array(dataframe["mark_type"].tolist())

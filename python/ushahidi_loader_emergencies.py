@@ -11,13 +11,13 @@ import logging, os
 import numpy as np
 from gen_synthetic import dataset_location
 from ushahididata import UshahidiDataHandler
-# from prediction_tests import Tester
-from reevaluate import Tester
+from prediction_tests import Tester
+# from reevaluate import Tester
 from scipy.sparse import coo_matrix
 
 RELOAD_GOLD = False # load the gold data from file, or compute from scratch?
 
-expt_label_template = "/ushahidi_emergencies3/"
+expt_label_template = "/ushahidi_emergencies4/"
     
 nruns = 20 # can use different random subsets of the reports C
 
@@ -56,10 +56,10 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.DEBUG)
 
     methods = [
-               #'KDE',
+               'KDE',
                'IBCC',
                'GP',
-               #'IBCC+GP',
+               'IBCC+GP',
                'HeatmapBCC'
                ]
 
@@ -200,4 +200,6 @@ if __name__ == '__main__':
                 ls, optimise=False, verbose=False)            
                 
         tester.run_tests(C, nx, ny, xtest_d, ytest_d, gold_d, golddensity_d, Nreps_initial, Nrep_inc)
+#         tester.reevaluate(C, nx, ny, xtest_d, ytest_d, gold_d, golddensity_d, Nreps_initial, Nrep_inc)
+
         tester.save_separate_results()

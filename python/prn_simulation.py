@@ -107,12 +107,13 @@ methods = [
 nruns = 20
 nsteps = 5
 
-featurenames = ['tarp', 'structural_damage_2']#['structural_damage_3', 'tarp', 'structural_damage_2']
+featurenames = ['structural_damage_3']
+# , 'tarp', 'structural_damage_2']#[, 'tarp', 'structural_damage_2']
 
 neg_sample_size = 0.2#0.5#0.1 # how many of the "no mark" labels to use?
 Nreps_initial_fraction = 0.1
 
-topdir = 'prn2/'
+topdir = 'prn4/'
 expt_label_template = topdir + '%s'
 
 def load_data(featurename='structural_damage_3'):
@@ -123,7 +124,7 @@ def load_data(featurename='structural_damage_3'):
     npos = np.sum(C[:, 3] > 0)
     
     #0.5 used in successful expmts
-    Nreports = 0.5 * np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
+    Nreports = 0.5 * np.floor(neg_sample_size * nneg + npos) #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
 
     return C, Nreports, prn.nx, prn.ny, t_all, t_all 
 
@@ -236,8 +237,11 @@ if __name__ == '__main__':
             tester.ignore_report_point_density = True
             t_test_gold_density = np.copy(t_test_gold)
             # ignore locations where the gold is undecided, even for the density estimator
+            t_test_gold[(t_test_gold > 0.1) & (t_test_gold < 0.9)] = -1 
             t_test_gold_density[(t_test_gold_density > 0.1) & (t_test_gold_density < 0.9)] = -1          
-            tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold_density, Nreps_initial, 
+#             tester.run_tests(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold_density, Nreps_initial, 
+#                              Nrep_inc)
+            tester.reevaluate(C_d, nx, ny, xtest.reshape(-1), ytest.reshape(-1), t_test_gold, t_test_gold_density, Nreps_initial, 
                              Nrep_inc)
             if SAVE_RESULTS:
                 tester.save_separate_results()

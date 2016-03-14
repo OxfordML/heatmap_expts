@@ -44,8 +44,7 @@ diag_weak = 5.0
 off_diag_weak = 5.0
 bias_weak = np.zeros(gs.J)
 
-#expt_label_template = 'synth/output_cluslocs%.2f_noise_free5'
-expt_label_template = 'synth/output_cluslocs%.2f_noise_grid5'
+expt_label_template = 'synth/output_cluslocs%.2f_noise_free5'
 
 if __name__ == '__main__':
-    gs.run_experiments(expt_label_template)#, 0, gs.nruns, 2, gs.nproportions)
+    gs.run_experiments(expt_label_template, 8, gs.nruns, 2, gs.nproportions)
