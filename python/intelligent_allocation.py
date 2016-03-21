@@ -127,7 +127,8 @@ def allocate_tasks(classification_data, available_workers, available_images, npe
     return workers, images
 
 def draw_new_targets(mean_new, x_new, y_new, f_old, x_old, y_old, output_scale, ls):
-
+    from scipy.stats import multivariate_normal as mvn
+    
     if hasattr(x_new, 'T'):    
         ddx = x_new - y_new.T
         ddy = y_new - y_new.T
@@ -168,6 +169,10 @@ def draw_new_targets(mean_new, x_new, y_new, f_old, x_old, y_old, output_scale, 
     #f_gold = f_mean + A.dot(z)
 
 def run_expt(dataframe, datasetid):
+    import time
+    import os
+    from scipy.stats import bernoulli, beta
+    
     img_ids = dataframe["subject_id"]
     img_ids, img_idxs = np.unique(img_ids, return_index=True)
     img_ids = np.arange(len(img_ids), dtype=float)[:, np.newaxis]
@@ -194,7 +199,9 @@ def run_expt(dataframe, datasetid):
     # Use a fixed length-scale learned from other experiments on the Haiyan data
     ls = 80.0 # 32 / 132.0 * nx gives roughly this, i.e. take it from the prn experiments and convert to the local grid size
 
-    if not os.path.isfile("./data/intelligent_allocation/synth_y_gold.npy"):
+    outputdir = "./data/intelligent_allocation/%s_%d/" % (expt_label, datasetid)
+
+    if not os.path.isfile(outputdir + "/synth_y_gold.npy"):
         #create some synthetic "gold"
         x_gold = np.tile(np.arange(nx)[:, np.newaxis], (1, ny)).reshape((nx*ny, 1))
         y_gold = np.tile(np.arange(ny)[np.newaxis, :], (nx, 1)).reshape((nx*ny, 1))
@@ -206,12 +213,12 @@ def run_expt(dataframe, datasetid):
         drawn_gold = np.zeros(x_gold.shape, dtype=bool) # indicates which locations are properly initialised for f, rho and t
         
     else:
-        t_gold = np.load("./data/intelligent_allocation/%s_%d/synth_t_gold.npy" % (expt_label, datasetid))
-        rho_gold = np.load("./data/intelligent_allocation/%s_%d/synth_rho_gold.npy" % (expt_label, datasetid))
-        f_gold = np.load("./data/intelligent_allocation/%s_%d/synth_f_gold.npy" % (expt_label, datasetid))
-        drawn_gold = np.load("./data/intelligent_allocation/%s_%d/synth_drawn_gold.npy" % (expt_label, datasetid))
-        x_gold = np.load("./data/intelligent_allocation/%s_%d/synth_x_gold.npy" % (expt_label, datasetid))
-        y_gold = np.load("./data/intelligent_allocation/%s_%d/synth_y_gold.npy" % (expt_label, datasetid))
+        t_gold = np.load(outputdir + "/synth_t_gold.npy" % (expt_label, datasetid))
+        rho_gold = np.load(outputdir + "/synth_rho_gold.npy" % (expt_label, datasetid))
+        f_gold = np.load(outputdir + "/synth_f_gold.npy" % (expt_label, datasetid))
+        drawn_gold = np.load(outputdir + "/synth_drawn_gold.npy" % (expt_label, datasetid))
+        x_gold = np.load(outputdir + "/synth_x_gold.npy" % (expt_label, datasetid))
+        y_gold = np.load(outputdir + "/synth_y_gold.npy" % (expt_label, datasetid))
         
     lat_gold = x_gold * (maxlat - minlat) / nx + minlat  
     lon_gold = y_gold * (maxlon - minlon) / ny + minlon
@@ -338,13 +345,15 @@ def run_expt(dataframe, datasetid):
         print "nlabels = %i" % nlabels
         
     #update the saved arrays of ground truth
-    np.save("./data/intelligent_allocation/%s_%d/synth_x_gold.npy" % (expt_label, datasetid), x_gold)
-    np.save("./data/intelligent_allocation/%s_%d/synth_y_gold.npy" % (expt_label, datasetid), y_gold)    
-    np.save("./data/intelligent_allocation/%s_%d/synth_t_gold.npy" % (expt_label, datasetid), t_gold)
-    np.save("./data/intelligent_allocation/%s_%d/synth_rho_gold.npy" % (expt_label, datasetid), rho_gold)
-    np.save("./data/intelligent_allocation/%s_%d/synth_f_gold.npy" % (expt_label, datasetid), f_gold)
-    np.save("./data/intelligent_allocation/%s_%d/synth_drawn_gold.npy" % (expt_label, datasetid), drawn_gold)
-    np.save("./data/intelligent_allocation/%s_%d/C.npy" % (expt_label, datasetid))
+    if not os.path.isdir(outputdir):
+        os.mkdir(outputdir)
+    np.save(outputdir + "/synth_x_gold.npy", x_gold)
+    np.save(outputdir + "/synth_y_gold.npy" % (expt_label, datasetid), y_gold)    
+    np.save(outputdir + "/synth_t_gold.npy" % (expt_label, datasetid), t_gold)
+    np.save(outputdir + "/synth_rho_gold.npy" % (expt_label, datasetid), rho_gold)
+    np.save(outputdir + "/synth_f_gold.npy" % (expt_label, datasetid), f_gold)
+    np.save(outputdir + "/synth_drawn_gold.npy" % (expt_label, datasetid), drawn_gold)
+    np.save(outputdir + "/C.npy" % (expt_label, datasetid))
     
     # 4. Evaluate accuracy by using prediction tests with HeatmapBCC to see how accuracy changes with number of labels.
     from prediction_tests import Tester
@@ -356,10 +365,7 @@ def run_expt(dataframe, datasetid):
                      nlabels_at_iteration[1] - nlabels_at_iteration[0]) 
 
 if __name__ == '__main__':
-    from scipy.stats import beta, bernoulli, multivariate_normal as mvn, norm
-    #from scipy.linalg import cholesky
-    import time
-    import os.path
+    import os
     
     expt_label = 'random'
     
