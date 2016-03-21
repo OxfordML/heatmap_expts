@@ -62,7 +62,7 @@ def allocate_tasks(classification_data, available_workers, available_images, npe
     nworkers = len(available_workers)
     ncandidates_per_worker = 20 
     candidate_imgs = np.zeros((nworkers, ncandidates_per_worker)) - 1 # candidate images available to each worker
-    ncandidates = np.zeros(nworkers)
+    ncandidates = np.zeros(nworkers, dtype=int)
     workers = np.arange(nworkers)
     need_more_locations = True # flag to indicate that we should find more candidate locations
     
@@ -107,7 +107,7 @@ def allocate_tasks(classification_data, available_workers, available_images, npe
         # assign the candidate
         allocs[alloc_to_worker_idxs, maxworker] = img_to_assign
 
-        print "Assigning worker %i to image %i" % (maxworker, img_to_assign)
+        #print "Assigning worker %i to image %i" % (maxworker, img_to_assign)
 
         # if the worker has enough allocations, disqualify the worker 
         if alloc_to_worker_idxs == nperworker - 1:
@@ -126,18 +126,48 @@ def allocate_tasks(classification_data, available_workers, available_images, npe
     images = allocs.flatten() # images to allocate to the workers
     return workers, images
 
-if __name__ == '__main__':
-    from scipy.stats import beta, bernoulli, multivariate_normal as mvn, norm
-    from scipy.linalg import cholesky
-    import time
-    import os.path
+def draw_new_targets(mean_new, x_new, y_new, f_old, x_old, y_old, output_scale, ls):
+
+    if hasattr(x_new, 'T'):    
+        ddx = x_new - y_new.T
+        ddy = y_new - y_new.T
+        K_new = matern_3_2(ddx, ddy, ls)
+    else:
+        ddx = 0
+        ddy = 0 
+        K_new = np.zeros(1)
     
-    # Run a simulation to test the method.  
-    # 1. Load the gold standard for the PRN dataset for structural damage 3. 
-    datafile = "./data/prn_pilot_classifications_onerowpermark_withsubjectinfo.csv"
-    dataframe = pd.read_csv(datafile, usecols=["subject_id", "user_id", "resolution_level", "lat_mark", "long_mark", "lat_lowerleft", 
-                               "long_lowerleft", "lat_upperright", "long_upperright", "mark_type", "damage_assessment"])
+    if not np.any(f_old):
+        f_mean = np.zeros(len(x_new)) + mean_new
+    else:
+        
+        if x_old.ndim == 1:
+            x_old = x_old[:, np.newaxis]
+        if y_old.ndim == 1:
+            y_old = y_old[:, np.newaxis]
+        
+        ddx = x_old - x_old.T
+        ddy = y_old - y_old.T
+            
+        K_old = matern_3_2(ddx, ddy, ls)
+        
+        invK_old = np.linalg.inv(K_old)
+        
+        ddx = x_new - x_old.T
+        ddy = y_new - y_old.T
+        
+        K = matern_3_2(ddx, ddy, ls)
+        f_mean = mean_new + K.dot(invK_old).dot(f_old)
+        K_new = K_new - K.dot(invK_old).dot(K.T)
     
+    samples = mvn.rvs(f_mean, K_new)
+    return samples    
+    
+    #A = cholesky(K, lower=True, check_finite=False)
+    #z = norm.rvs(loc=0, scale=1, size=(len(f_mean), 1))
+    #f_gold = f_mean + A.dot(z)
+
+def run_expt(dataframe, datasetid):
     img_ids = dataframe["subject_id"]
     img_ids, img_idxs = np.unique(img_ids, return_index=True)
     img_ids = np.arange(len(img_ids), dtype=float)[:, np.newaxis]
@@ -156,49 +186,40 @@ if __name__ == '__main__':
 
     nx = np.ceil((maxlat - minlat) * 2500.0) / gridsize_km
     ny = np.ceil((maxlon - minlon) * 2500.0) / gridsize_km
+    nx = int(nx)
+    ny = int(ny)
 
-    if os.path.isfile("./data/intelligent_allocation/synth_y_gold.npy"):
+    output_scale = 1.0 / logit(0.75)**2
+    
+    # Use a fixed length-scale learned from other experiments on the Haiyan data
+    ls = 80.0 # 32 / 132.0 * nx gives roughly this, i.e. take it from the prn experiments and convert to the local grid size
+
+    if not os.path.isfile("./data/intelligent_allocation/synth_y_gold.npy"):
         #create some synthetic "gold"
         x_gold = np.tile(np.arange(nx)[:, np.newaxis], (1, ny)).reshape((nx*ny, 1))
         y_gold = np.tile(np.arange(ny)[np.newaxis, :], (nx, 1)).reshape((nx*ny, 1))
-        
-        lat_gold = x_gold * (maxlat - minlat) / nx + minlat  
-        lon_gold = y_gold * (maxlon - minlon) / ny + minlon
-        
-        img_ids_gold = []
-        for i in range(len(lat_gold)):
-            img_ids_i = img_ids[ (lat_lowerleft <= lat_gold[i]) & (lat_upperright >= lat_gold[i]) & (lon_lowerleft <= lon_gold[i]) & (lon_upperright >= lon_gold[i])]
-            img_ids_gold.append(img_ids_i)
     
-        ddx = x_gold - x_gold.T
-        ddy = y_gold - y_gold.T
-    
-        output_scale = 1.0 / logit(0.75)**2
+        # create an empty array for storing f_gold as we draw it when needed
+        f_gold = np.zeros(x_gold.shape)
+        rho_gold = np.zeros(x_gold.shape)
+        t_gold = np.zeros(x_gold.shape, dtype=int)
+        drawn_gold = np.zeros(x_gold.shape, dtype=bool) # indicates which locations are properly initialised for f, rho and t
         
-        # Use a fixed length-scale learned from other experiments on the Haiyan data
-        ls = 80.0 # 32 / 132.0 * nx gives roughly this, i.e. take it from the prn experiments and convert to the local grid size
-        
-        K = matern_3_2(ddx, ddy, ls)
-        f_mean = np.zeros(len(x_gold))
-        
-        A = cholesky(K, lower=True, check_finite=False)
-        z = norm.rvs(loc=0, scale=1)
-        f_gold = f_mean + A.dot(z)
-        #f_gold = mvn.rvs(mean=f_mean, cov=K / output_scale) # this doesn't work at large scale
-        rho_gold = sigmoid(f_gold)
-        t_gold = bernoulli.rvs(rho_gold)
-        
-        np.save("./data/intelligent_allocation/synth_t_gold.npy", t_gold)
-        np.save("./data/intelligent_allocation/synth_rho_gold.npy", rho_gold)
-        np.save("./data/intelligent_allocation/synth_f_gold.npy", f_gold)
-        np.save("./data/intelligent_allocation/synth_x_gold.npy", x_gold)
-        np.save("./data/intelligent_allocation/synth_y_gold.npy", y_gold)
     else:
-        t_gold = np.load("./data/intelligent_allocation/synth_t_gold.npy")
-        rho_gold = np.load("./data/intelligent_allocation/synth_rho_gold.npy")
-        f_gold = np.load("./data/intelligent_allocation/synth_f_gold.npy")
-        x_gold = np.load("./data/intelligent_allocation/synth_x_gold.npy")
-        y_gold = np.load("./data/intelligent_allocation/synth_y_gold.npy")
+        t_gold = np.load("./data/intelligent_allocation/%s_%d/synth_t_gold.npy" % (expt_label, datasetid))
+        rho_gold = np.load("./data/intelligent_allocation/%s_%d/synth_rho_gold.npy" % (expt_label, datasetid))
+        f_gold = np.load("./data/intelligent_allocation/%s_%d/synth_f_gold.npy" % (expt_label, datasetid))
+        drawn_gold = np.load("./data/intelligent_allocation/%s_%d/synth_drawn_gold.npy" % (expt_label, datasetid))
+        x_gold = np.load("./data/intelligent_allocation/%s_%d/synth_x_gold.npy" % (expt_label, datasetid))
+        y_gold = np.load("./data/intelligent_allocation/%s_%d/synth_y_gold.npy" % (expt_label, datasetid))
+        
+    lat_gold = x_gold * (maxlat - minlat) / nx + minlat  
+    lon_gold = y_gold * (maxlon - minlon) / ny + minlon
+        
+    img_ids_gold = []
+    for i in range(len(lat_gold)):
+        img_ids_i = img_ids[ (lat_lowerleft <= lat_gold[i]) & (lat_upperright >= lat_gold[i]) & (lon_lowerleft <= lon_gold[i]) & (lon_upperright >= lon_gold[i])]
+        img_ids_gold.append(img_ids_i)
         
     # 2. Generate 30 simulated workers of all types (random draws from Beta distributions).
     alpha0 = np.ones(2) 
@@ -222,18 +243,38 @@ if __name__ == '__main__':
     workerIDs = np.arange(K)[:, np.newaxis]
     
     selection = np.random.randint(0, len(x_gold), size=K)
-    x_ass = x_gold[selection][:, np.newaxis]
-    y_ass = y_gold[selection][:, np.newaxis]
+    x_ass = x_gold[selection]
+    y_ass = y_gold[selection]
+    
+    idxs_to_draw = (drawn_gold[selection] == 0).flatten()
+    if np.any(idxs_to_draw):
+        f_mean = np.zeros(len(x_ass))
+        f_gold[selection[idxs_to_draw], 0] = draw_new_targets(f_mean, x_ass[idxs_to_draw], y_ass[idxs_to_draw], 
+                                       f_gold[drawn_gold], x_gold[drawn_gold], y_gold[drawn_gold], output_scale, ls)
+        rho_gold[selection[idxs_to_draw]] = sigmoid(f_gold[selection[idxs_to_draw]])
+        t_gold[selection[idxs_to_draw]] = bernoulli.rvs(rho_gold[selection[idxs_to_draw]])
+        drawn_gold[selection[idxs_to_draw]] = True
+    
     t_ass = t_gold[selection][:, np.newaxis]
     
     workers = workerIDs
     images = []
     for i in range(len(selection)):
         images_list = img_ids_gold[selection[i]] #find some images that cover x_ass and y_ass
+        
+        # if there are no images here, replace the sample
         while not len(images_list):
             newid = np.random.randint(0, len(x_gold))
             x_ass[i] = x_gold[newid]
             y_ass[i] = y_gold[newid]
+            
+            if not drawn_gold[newid]:
+                f_gold[newid] = draw_new_targets(0, x_gold[newid], y_gold[newid], f_gold[drawn_gold], 
+                                                 x_gold[drawn_gold], y_gold[drawn_gold], output_scale, ls)
+                rho_gold[newid] = sigmoid(f_gold[newid])
+                t_gold[newid] = bernoulli.rvs(rho_gold[newid])
+                drawn_gold[newid] = True
+            
             t_ass[i] = t_gold[newid]
             images_list = img_ids_gold[newid]
             
@@ -277,7 +318,15 @@ if __name__ == '__main__':
             y = np.random.randint(np.floor(gridymin[img]), np.floor(gridymax[img]) + 1)
             x_ass.append(x)
             y_ass.append(y)
-            t_ass.append(t_gold[(x_gold==x) & (y_gold==y)])
+            
+            idx = (x_gold==x) & (y_gold==y)
+            
+            if not drawn_gold[idx]:
+                f_gold[idx] = draw_new_targets(0, x, y, f_gold[drawn_gold], x_gold[drawn_gold], y_gold[drawn_gold], output_scale, ls)
+                rho_gold[idx] = sigmoid(f_gold[idx])
+                t_gold[idx] = bernoulli.rvs(rho_gold[idx])
+                drawn_gold[idx] = True            
+            t_ass.append(t_gold[idx])
             
         t_ass = np.array(t_ass)[:, np.newaxis]
         x_ass = np.array(x_ass)[:, np.newaxis]
@@ -287,6 +336,15 @@ if __name__ == '__main__':
             
         nlabels = C.shape[0]
         print "nlabels = %i" % nlabels
+        
+    #update the saved arrays of ground truth
+    np.save("./data/intelligent_allocation/%s_%d/synth_x_gold.npy" % (expt_label, datasetid), x_gold)
+    np.save("./data/intelligent_allocation/%s_%d/synth_y_gold.npy" % (expt_label, datasetid), y_gold)    
+    np.save("./data/intelligent_allocation/%s_%d/synth_t_gold.npy" % (expt_label, datasetid), t_gold)
+    np.save("./data/intelligent_allocation/%s_%d/synth_rho_gold.npy" % (expt_label, datasetid), rho_gold)
+    np.save("./data/intelligent_allocation/%s_%d/synth_f_gold.npy" % (expt_label, datasetid), f_gold)
+    np.save("./data/intelligent_allocation/%s_%d/synth_drawn_gold.npy" % (expt_label, datasetid), drawn_gold)
+    np.save("./data/intelligent_allocation/%s_%d/C.npy" % (expt_label, datasetid))
     
     # 4. Evaluate accuracy by using prediction tests with HeatmapBCC to see how accuracy changes with number of labels.
     from prediction_tests import Tester
@@ -296,3 +354,20 @@ if __name__ == '__main__':
                     ls, optimise=False, verbose=False)
     tester.run_tests(C, nx, ny, x_gold, y_gold, t_gold, rho_gold, nlabels_at_iteration[0], 
                      nlabels_at_iteration[1] - nlabels_at_iteration[0]) 
+
+if __name__ == '__main__':
+    from scipy.stats import beta, bernoulli, multivariate_normal as mvn, norm
+    #from scipy.linalg import cholesky
+    import time
+    import os.path
+    
+    expt_label = 'random'
+    
+    # Run a simulation to test the method.  
+    # 1. Load the gold standard for the PRN dataset for structural damage 3. 
+    datafile = "./data/prn_pilot_classifications_onerowpermark_withsubjectinfo.csv"
+    dataframe = pd.read_csv(datafile, usecols=["subject_id", "user_id", "resolution_level", "lat_mark", "long_mark", "lat_lowerleft", 
+                               "long_lowerleft", "lat_upperright", "long_upperright", "mark_type", "damage_assessment"])
+    
+    for d in range(25):
+        run_expt(dataframe, d)
