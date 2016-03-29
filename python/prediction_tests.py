@@ -260,8 +260,8 @@ class Tester(object):
             density_var = {}
     
             # indicator array to show whether reports are positive or negative
-            posreports = (C[:, 3] == 1).astype(float)
-            negreports = (C[:, 3] == 0).astype(float)
+            posreports = C[:, 3].astype(float) #(C[:, 3] == 1).astype(float)
+            negreports = 1.0 - C[:, 3] #(C[:, 3] == 0).astype(float)
     
             # Report coords for this round
             reportsx = C[:, 1]
@@ -533,7 +533,7 @@ class Tester(object):
                 linearIdxs = np.ravel_multi_index(report_coords, dims=(nx, ny))
                 C_flat = C[:,[0,1,3]]
                 C_flat[:,1] = linearIdxs
-                testidxs = np.ravel_multi_index((targetsx, targetsy), dims=(nx, ny))
+                testidxs = np.ravel_multi_index((targetsx.astype(int), targetsy.astype(int)), dims=(nx, ny))
                 bintestidxs = np.zeros(np.max([np.max(testidxs), np.max(linearIdxs)]) + 1, dtype=bool)
                 bintestidxs[testidxs] = True
                 bintestidxs[linearIdxs] = True # make sure we use all observed data points during inference

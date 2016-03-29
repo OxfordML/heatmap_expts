@@ -11,7 +11,8 @@ from scipy.stats import gamma
 
 class CicadaDataHandler(object):
     
-    def __init__(self, nx= 500, ny= 500, datadir= './data', datafile = '/cicada-edwin.csv'):
+    def __init__(self, nx= 2000, ny= 2640, datadir= './data', datafile = '/cicada-edwin.csv'):
+        # default grid size gives squares of approximately 25x25m
         self.nx = nx
         self.ny = ny
         self.datadir = datadir
@@ -27,10 +28,10 @@ class CicadaDataHandler(object):
         normlatdata = (latdata-self.minlat)/(self.maxlat-self.minlat)
         normlondata = (londata-self.minlon)/(self.maxlon-self.minlon)    
          
-        latdata = np.array(normlatdata * self.nx)
-        londata = np.array(normlondata * self.ny)   
-        #latdata = np.array(np.round(normlatdata*self.nx), dtype=np.int)
-        #londata = np.array(np.round(normlondata*self.ny), dtype=np.int)
+        #latdata = np.array(normlatdata * self.nx)
+        #londata = np.array(normlondata * self.ny)   
+        latdata = np.array(np.floor(normlatdata*self.nx), dtype=np.int)
+        londata = np.array(np.floor(normlondata*self.ny), dtype=np.int)
             
         return latdata,londata         
     
@@ -64,7 +65,7 @@ class CicadaDataHandler(object):
         targets = []       
         instantiatedagents = []
         
-        original_target_values = np.sort(np.unique(targetdata))
+        #original_target_values = np.sort(np.unique(targetdata))
         
         latlon_counter = 0
         for i, deviceid in deviceids.iteritems():
@@ -77,8 +78,11 @@ class CicadaDataHandler(object):
             agentIDstr = "%s_%s" % (classid, deviceid)
             
             agenttype = np.int(classid) # use the agenttype to determine which prior is suitable. Will require changin the optimizer.
-            if agenttype  > 3:
-                agenttype = 4            
+            if agenttype > 90:
+                agenttype = 99
+            elif agenttype > 4:
+                # ignore other classes
+                continue
                         
             if agentIDstr not in instantiatedagents:
                 instantiatedagents.append(agentIDstr)
@@ -101,10 +105,13 @@ class CicadaDataHandler(object):
             C.append([agentID, repx, repy, reportvalue])
             
             if not np.isnan(targetdata[i]):
-                targetvalue = np.argwhere(original_target_values==targetdata[i])[0,0]
+                #targetvalue = np.argwhere(original_target_values==targetdata[i])[0,0]
+                targetvalue = int(targetdata[i])
                 
-                if targetvalue > 3: # group everything that is not in the first four categories together as "none"
-                    targetvalue = 4
+                if targetvalue > 90: # group everything that is not in the first four categories together as "none"
+                    targetvalue = 99
+                elif targetvalue > 4:
+                    targetvalue = 5
                 
                 C_with_gold.append([agentID, repx, repy, reportvalue, targetvalue])                
                 targets.append([repx, repy, targetvalue])
@@ -117,9 +124,6 @@ class CicadaDataHandler(object):
         self.targets = np.array(targets)
         self.agenttypes = np.array(agenttypes)
         
-        # Any value greater than 3 is not one of the species that the app can detect -- mark them all as "none"
-        self.targets[self.targets[:, 2] > 3, :] = 4
-        
 if __name__=="__main__":
     print "Loading Cicada Data..."
 
@@ -129,13 +133,13 @@ if __name__=="__main__":
     loader.load_data()
     data = loader.data
     
-    methods = ['HeatmapBCC']
+    methods = ['KDE', 'IBCC', 'HeatmapBCC', 'GP', 'IBCC+GP']#['HeatmapBCC']
     Nreports = loader.C.shape[0]
     
     nscores = 2 
     
-    accsums = np.zeros(5)
-    totals = np.zeros(5)
+    accsums = {}
+    totals = {}
     
     class4score = 0
     otherclassscore = 0
@@ -153,23 +157,28 @@ if __name__=="__main__":
 
         total_correct = np.sum((loader.C_with_gold[idxs, 3]) * posidxs + (1 - loader.C_with_gold[idxs, 3]) * (1 - posidxs))
         accuracy = total_correct / float(np.sum(idxs))
-        print "accuracy: %f. type: %i" % (accuracy, at)
+        #print "accuracy: %f. type: %i" % (accuracy, at)
         
-        if at == 4:
-            class4score += loader.C_with_gold[idxs, 3]
-            otherclassscore += loader.C_with_gold[idxs, 3]
+        if at == 5:
+            class4score += np.sum(loader.C_with_gold[idxs, 3])
+            otherclassscore += np.sum(1 - loader.C_with_gold[idxs, 3])
         else:
-            class4score += 1 - loader.C_with_gold[idxs, 3]
-            otherclassscore += loader.C_with_gold[idxs, 3]
+            class4score += np.sum(1 - loader.C_with_gold[idxs, 3])
+            otherclassscore += np.sum(loader.C_with_gold[idxs, 3])
         
+        if at not in accsums:
+            accsums[at] = 0
+            totals[at] = 0
         accsums[at] += accuracy 
         totals[at] += 1.0
         
+    print "class 4 percentage: %f" % (class4score / (class4score + otherclassscore))
+        
     for at in range(5):
-        print "type = %i, total acc = %f" % (at, accsums[at]/totals[at])
+        print "type = %i, mean acc = %f" % (at, accsums[at]/totals[at])
     
 #     Run separately for each class
-    for l, c in enumerate([4]):#np.unique(loader.targets[:, 2])):
+    for l, c in enumerate([5]):#np.unique(loader.targets[:, 2])):
         for d in range(1):
             print "processing class %i" % c
             
@@ -181,8 +190,11 @@ if __name__=="__main__":
                     alpha0[1, 1, agentID] = 2
                 else:
                     alpha0[0, 1, agentID] = 2 # likely to give a higher value if it is not this class
+                    alpha0[1, 0, agentID] = 2
+                    
+            alpha0 *= 1000
                 
-            nu0 = np.array([10, 10]).astype(float)
+            nu0 = np.array([10000, 10000]).astype(float)
             z0 = nu0[1] / np.sum(nu0)
             shape_s0 = 0.5
             rate_s0 = 10.0 * 0.5    
@@ -205,7 +217,8 @@ if __name__=="__main__":
             shuffle_idxs = np.random.permutation(C.shape[0])
             C = C[shuffle_idxs, :]
             
-            # remove the type 4 reports
-            C = C[C[:, 3] != 4, :]
+#             remove the type 4 reports
+#            C = C[C[:, 3] != 4, :]
             
-            tester.run_tests(C, loader.nx, loader.ny, x_gold, y_gold, t_gold, [], Nreps_initial, Nrep_inc)        
+            tester.run_tests(C, loader.nx, loader.ny, x_gold, y_gold, t_gold, [], Nreps_initial, Nrep_inc)
+            tester.save_separate_results()        
