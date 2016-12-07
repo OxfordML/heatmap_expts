@@ -2,10 +2,9 @@
 Generate synthetic data for testing the heatmap methods.
 """
 
-import sys
-
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
+#import sys
+#sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
+#sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
 
 from scipy.stats import beta, bernoulli, multivariate_normal as mvn
 import prediction_tests
@@ -130,7 +129,7 @@ def dataset_location(experiment_label, dataset_label):
         os.mkdir(outputdir)
 
     outputdir = outputdir + "synth_sparse_%s/" % (dataset_label)
-    logging.debug("Using output directory %s" % outputdir)
+    logging.debug("Using data output directory %s" % outputdir)
 
     data_outputdir = outputdir + '/synth_data/'
     if not os.path.isdir(outputdir):
@@ -322,6 +321,8 @@ def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, x
 
     np.save(data_outputdir + "C.npy", C)
     np.save(data_outputdir + "pi_all.npy", pi.swapaxes(0,1).reshape((J*2, S), order='F').T )# pi all.
+    
+    return C, xreports, yreports, reports
 
 """
  TODO:

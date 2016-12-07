@@ -24,11 +24,14 @@ from gen_synthetic import gen_synth_ground_truth, gen_synth_reports
 from gpgrid import GPGrid
 #import gen_synthetic as gs
 
-RESET_ALL_DATA = False
+from sklearn.gaussian_process import GaussianProcessClassifier as GPC
+from sklearn.gaussian_process.kernels import Matern
 
-nx = 40
-ny = 40
-Nreports = 10000
+RESET_ALL_DATA = True
+
+nx = 5
+ny = 5
+Nreports = 100
 Ntest = nx * ny
 ls = 10
 snap_to_grid = False
@@ -36,7 +39,7 @@ experiment_label = "lengthscale_sim_expt"
 dataset_label = "lengthscale_sim_data"
 
 J = 2
-S = 7
+S = 20
 diags = np.ones(S)
 diags[:5] = 200
 diags[5:] = 1
@@ -49,21 +52,30 @@ biases[5:, :] = 0
 
 if __name__ == '__main__':    
     xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA, nx, ny, Nreports,
-                    Ntest, ls, snap_to_grid, experiment_label, dataset_label, 1, 0)
+                    Ntest, [ls, ls], snap_to_grid, experiment_label, dataset_label, 1, 0)
     
     C, xreports, yreports, reports = gen_synth_reports(RESET_ALL_DATA, Nreports, diags, off_diags, biases, xreports, 
                                                    yreports, t_gold, snap_to_grid, experiment_label, dataset_label)
 
-    rate_ls = 2.0 / ls
-    
     outputdir, data_outputdir = dataset_location(experiment_label, dataset_label)
     x_all = np.load(data_outputdir + "x_all.npy")
     y_all = np.load(data_outputdir + "y_all.npy")
     f_all = np.load(data_outputdir + "f_all.npy")
     t_all = np.load(data_outputdir + "t_all.npy" )# t_all
     
-    gpgrid = GPGrid(nx, ny, z0=0.5, shape_s0=100, rate_s0=10, shape_ls=2.0, rate_ls=rate_ls)
-    gpgrid.fit([xreports, yreports], reports)    
-    gp_preds, gp_var = gpgrid.predict([x_all, y_all], variance_method='sample')
+    x_test = x_all[Nreports:]
+    y_test = y_all[Nreports:]
     
+    #gpgrid = GPGrid(nx, ny, z0=0.5, shape_s0=100, rate_s0=10, shape_ls=2.0, rate_ls=rate_ls)
+    #gpgrid.fit([xreports, yreports], reports)    
+    #gp_preds, gp_var = gpgrid.predict([x_all, y_all], variance_method='sample')
     
+    kernel = Matern(length_scale=1)
+    gpc = GPC(kernel=kernel, warm_start=False, n_restarts_optimizer=2)
+    gpc.fit(np.concatenate((xreports, yreports), axis=1), reports)
+    ls_found = gpc.kernel_.theta[0]
+#     os_found = gpc.kernel_.theta[1]
+    print "length scale: %f" % ls_found
+#     print "output scale: %f" % os_found
+    params = gpc.get_params(deep=True)
+    gpc.predict_proba(np.concatenate((x_test, y_test), axis=1))
