@@ -2,11 +2,6 @@
 Generate synthetic data for testing the heatmap methods.
 """
 
-import sys
-
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
-
 from scipy.stats import beta, bernoulli, multivariate_normal as mvn
 import prediction_tests
 import numpy as np
@@ -172,10 +167,13 @@ def plot_report_histogram(reportsx, reportsy, reports, ax=None):
     ax.plot_surface(x_plot, y_plot, hist, cmap='Spectral', rstride=1, cstride=1)
 
 def gen_synth_ground_truth(reset_all_data, nx, ny, Nreports, Ntest, ls, snap_to_grid, experiment_label, dataset_label,
-                           mean_reps_per_cluster=1, clusterspread=0):
+                           mean_reps_per_cluster=1, clusterspread=0, outputscale_new=-1):
     '''
     Generate data.
     '''
+    if outputscale_new != -1:
+        output_scale = outputscale_new
+    
     _, data_outputdir = dataset_location(experiment_label, dataset_label)
 
     if not reset_all_data and os.path.isfile(data_outputdir + "x_all.npy"):
@@ -186,7 +184,7 @@ def gen_synth_ground_truth(reset_all_data, nx, ny, Nreports, Ntest, ls, snap_to_
 
     #reps per cluster controls how concentrated the reports are in an group. mean_reps_per_cluster==1 puts all reports at
     # separate locations.
-    nclusters = Nreports / float(mean_reps_per_cluster)
+    nclusters = Nreports / int(mean_reps_per_cluster)
     xclusters = np.random.rand(nclusters, 1) * (float(nx) - clusterspread)
     yclusters = np.random.rand(nclusters, 1) * (float(ny) - clusterspread)
 
@@ -213,7 +211,7 @@ def gen_synth_ground_truth(reset_all_data, nx, ny, Nreports, Ntest, ls, snap_to_
 #     Nreports = Nreports ** 2
 
     # Select diags grid of test points Ntest x Ntest
-    Ntest = np.round(Ntest **0.5)
+    Ntest = int(np.round(Ntest **0.5))
     xtest = (np.arange(Ntest) * float(nx) / Ntest)[np.newaxis, :]
     xtest = np.tile(xtest, (Ntest, 1))
     xtest = xtest.reshape(Ntest**2, 1)
@@ -279,7 +277,10 @@ def gen_synth_ground_truth(reset_all_data, nx, ny, Nreports, Ntest, ls, snap_to_
     return xreports, yreports, t_rep
 
 def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, xreports, yreports, t_gold, snap_to_grid,
-                      experiment_label, dataset_label):
+                      experiment_label, dataset_label, Scurrent=-1):
+
+    if Scurrent != -1:
+        S = Scurrent
 
     _, data_outputdir = dataset_location(experiment_label, dataset_label)
 
@@ -322,7 +323,7 @@ def gen_synth_reports(reset_all_data, Nreports, diags, off_diags, bias_vector, x
 
     np.save(data_outputdir + "C.npy", C)
     np.save(data_outputdir + "pi_all.npy", pi.swapaxes(0,1).reshape((J*2, S), order='F').T )# pi all.
-
+    
 """
  TODO:
 
