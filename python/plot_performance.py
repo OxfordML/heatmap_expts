@@ -10,14 +10,14 @@ Created on 23 Nov 2015
 
 import numpy as np
 import matplotlib.pyplot as plt
-import logging
+import logging, os
 
-# import run_synthetic_bias as expmt_module
-# import run_synthetic_noise as expmt_module
-# import run_synthetic_noise_nogrid as expmt_module
-# import ushahidi_loader_damage as expmt_module
-# import ushahidi_loader_emergencies as expmt_module
-import prn_simulation as expmt_module
+#import run_synthetic_bias as expmt_module
+#import run_synthetic_noise as expmt_module
+import run_synthetic_noise_nogrid as expmt_module
+#import ushahidi_loader_damage as expmt_module
+#import ushahidi_loader_emergencies as expmt_module
+#import prn_simulation as expmt_module
 
 if hasattr(expmt_module, 'cluster_spreads'):
     cluster_spreads = expmt_module.cluster_spreads
@@ -33,7 +33,7 @@ if hasattr(expmt_module, 'weak_proportions'):
 else:
     weak_proportions = [-1]
 
-def get_output_dir(d, p, p_idx, cluster_spread):
+def get_data_dir(d, p, p_idx, cluster_spread):
     if p==-1:
         dataset_label = "d%i" % d # no proportion indices
     else:
@@ -44,28 +44,58 @@ def get_output_dir(d, p, p_idx, cluster_spread):
         expt_label = expt_label % cluster_spread
          
     logging.info("Loading results for proportion %f, Dataset %d, cluster spread %s" % (p, d, str(cluster_spread)))
-    outputdir, _ = expmt_module.dataset_location(expt_label, dataset_label)
+    datadir, _ = expmt_module.dataset_location(expt_label, dataset_label)
+    return datadir
+
+def get_output_dir(p, cluster_spread=0):
+    expt_label = expmt_module.expt_label_template
+    
+    if p==-1:
+        dataset_label = "" # no proportion indices
+    else:
+        dataset_label = "p%.3f" % p
+    
+    if '%' in expt_label:
+        expt_label = expt_label % cluster_spread
+        
+    outputdir =  './output/' 
+    if not os.path.isdir(outputdir):
+        os.mkdir(outputdir)
+    if 'synth/' in expt_label and not os.path.isdir(outputdir + '/synth/'):
+        os.mkdir(outputdir + '/synth/')        
+    if 'prn4/' in expt_label and not os.path.isdir(outputdir + '/prn4/'):
+        os.mkdir(outputdir + '/prn4/')        
+    outputdir += expt_label + '/'
+    if not os.path.isdir(outputdir):
+        os.mkdir(outputdir) 
+    outputdir += dataset_label
+    if not os.path.isdir(outputdir):
+        os.mkdir(outputdir)
+    print "Using output dir %s" % outputdir
     return outputdir
 
-def load_mean_results(nruns, weak_proportions, filename):
-    mean_results = {}
-    std_results = {}
+def load_median_results(nruns, weak_proportions, filename):
+    median_results = {}
+    lq_results = {}
+    uq_results = {} 
     for p_idx, p in enumerate(weak_proportions):
         for cluster_spread in cluster_spreads:
             results_pcs = {}
             for d in range(nruns):
-                outputdir = get_output_dir(d, p, p_idx, cluster_spread)
+                datadir = get_data_dir(d, p, p_idx, cluster_spread)
     
-                current_results = np.load(outputdir + filename).item()
+                current_results = np.load(datadir + filename).item()
                 methods = current_results.keys()
     
-                if p not in mean_results:
-                    mean_results[p] = {}
-                    std_results[p] = {}
+                if p not in median_results:
+                    median_results[p] = {}
+                    lq_results[p] = {}
+                    uq_results[p] = {}
                     
-                if cluster_spread not in mean_results[p]:
-                    mean_results[p][cluster_spread] = {}
-                    std_results[p][cluster_spread] = {}                
+                if cluster_spread not in median_results[p]:
+                    median_results[p][cluster_spread] = {}
+                    lq_results[p][cluster_spread] = {}
+                    uq_results[p][cluster_spread] = {}                
                 
                 for m in methods:
                     if not m in results_pcs:
@@ -77,31 +107,36 @@ def load_mean_results(nruns, weak_proportions, filename):
                     results_pcs[m][d, :] = current_results[m]
         
             for m in results_pcs:
-                mean_results[p][cluster_spread][m] = np.mean(results_pcs[m], axis=0)
-                std_results[p][cluster_spread][m] = np.std(results_pcs[m], axis=0)
-    return mean_results, std_results, methods
+                median_results[p][cluster_spread][m] = np.median(results_pcs[m], axis=0)
+                lq_results[p][cluster_spread][m] = np.percentile(results_pcs[m], 25, axis=0)
+                uq_results[p][cluster_spread][m] = np.percentile(results_pcs[m], 75, axis=0)
+                
+    return median_results, lq_results, uq_results, methods
 
 def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
-    mean_results = {}
-    std_results = {}
+    median_results = {}
+    lq_results = {}
+    uq_results = {}
     for p_idx, p in enumerate(weak_proportions):
         for cluster_spread in cluster_spreads:
             results_pcs = {}
             for d in range(nruns):
-                outputdir = get_output_dir(d, p, p_idx, cluster_spread)
+                datadir = get_data_dir(d, p, p_idx, cluster_spread)
     
-                current_results = np.load(outputdir + filename).item()
+                current_results = np.load(datadir + filename).item()
                 methods = current_results.keys()
                 
                 testmethod = 'HeatmapBCC' #compare this against the
     
-                if p not in mean_results:
-                    mean_results[p] = {}
-                    std_results[p] = {}
+                if p not in median_results:
+                    median_results[p] = {}
+                    lq_results[p] = {}
+                    uq_results[p] = {}
                     
-                if cluster_spread not in mean_results[p]:
-                    mean_results[p][cluster_spread] = {}
-                    std_results[p][cluster_spread] = {}                
+                if cluster_spread not in median_results[p]:
+                    median_results[p][cluster_spread] = {}
+                    uq_results[p][cluster_spread] = {}
+                    lq_results[p][cluster_spread] = {}                
                 
                 testresults = np.array(current_results[testmethod])
                 if len(testresults)==24 and len(Nreps_iter)==11:
@@ -122,9 +157,10 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                         results_pcs[m][d, :] = current_results[m]
         
             for m in results_pcs:
-                mean_results[p][cluster_spread][m] = np.mean(results_pcs[m], axis=0)
-                std_results[p][cluster_spread][m] = np.std(results_pcs[m], axis=0)
-    return mean_results, std_results, methods
+                median_results[p][cluster_spread][m] = np.median(results_pcs[m], axis=0)
+                lq_results[p][cluster_spread][m] = np.percentile(results_pcs[m], 25, axis=0)
+                uq_results[p][cluster_spread][m] = np.percentile(results_pcs[m], 75, axis=0)
+    return median_results, lq_results, uq_results, methods
 
 if __name__ == '__main__':
     if hasattr(expmt_module, 'Nreports'):
@@ -168,7 +204,7 @@ if __name__ == '__main__':
     
     # load results for the density estimation        
     # Root mean squared error
-    rmsed, rmsed_std, methods = load_mean_results(nruns, weak_proportions, "rmsed.npy")
+    rmsed, rmsed_lq, rmsed_uq, methods = load_median_results(nruns, weak_proportions, "rmsed.npy")
          
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:
@@ -186,14 +222,14 @@ if __name__ == '__main__':
             plt.legend(loc='best')
             plt.grid(True)
             for i, m in enumerate(methods):
-                plt.fill_between(Nreps_iter, rmsed[p][cs][m] - rmsed_std[p][cs][m], rmsed[p][cs][m] + rmsed_std[p][cs][m], 
+                plt.fill_between(Nreps_iter, rmsed_lq[p][cs][m], rmsed_uq[p][cs][m], 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/rmsed.pdf")
       
 #     # Kendall's Tau
-#     tau, tau_std, methods = load_mean_results(nruns, weak_proportions, "tau.npy")
+#     tau, tau_quartile, methods = load_median_results(nruns, weak_proportions, "tau.npy")
 #   
 #     for p_idx, p in enumerate(weak_proportions):
 #         for cs in cluster_spreads:        
@@ -212,14 +248,14 @@ if __name__ == '__main__':
 #             plt.grid(True)
 #        
 #             for i, m in enumerate(methods):
-#                 plt.fill_between(Nreps_iter, tau[p][cs][m] - tau_std[p][cs][m], tau[p][cs][m] + tau_std[p][cs][m], 
+#                 plt.fill_between(Nreps_iter, tau[p][cs][m] - tau_quartile[p][cs][m], tau[p][cs][m] + tau_quartile[p][cs][m], 
 #                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
 #             
-#             outputdir = get_output_dir(0, p, p_idx, cs)
+#             outputdir = get_output_dir(p, cs)
 #             plt.savefig(outputdir + "/tau.pdf")       
 # 
 #     # Kendall's Tau
-#     tau, tau_std, methods = load_diff_results(nruns, weak_proportions, "tau.npy")
+#     tau, tau_quartile, methods = load_diff_results(nruns, weak_proportions, "tau.npy")
 #   
 #     for p_idx, p in enumerate(weak_proportions):
 #         for cs in cluster_spreads:        
@@ -242,82 +278,82 @@ if __name__ == '__main__':
 #             plt.grid(True)
 #        
 #             for i, m in enumerate(methods):
-#                 plt.fill_between(Nreps_iter, tau[p][cs][m] - tau_std[p][cs][m], tau[p][cs][m] + tau_std[p][cs][m], 
+#                 plt.fill_between(Nreps_iter, tau[p][cs][m] - tau_quartile[p][cs][m], tau[p][cs][m] + tau_quartile[p][cs][m], 
 #                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
 #             
-#             outputdir = get_output_dir(0, p, p_idx, cs)
+#             outputdir = get_output_dir(p, cs)
 #             plt.savefig(outputdir + "/tau_diff.pdf")   
 #        
-#     # Mean Cross Entropy
-#     mced, mced_std, methods = load_mean_results(nruns, weak_proportions, "mced.npy")
-#     methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
-#     for p_idx, p in enumerate(weak_proportions):
-#         for cs in cluster_spreads:        
-#             plt.figure()
-#             plt.title("Negative Log Probability Density of Density Estimates")
-#             for i, m in enumerate(methods):
-#                 label = m
-#                 
-#                 if not m in mced[p][cs]:
-#                     continue
-#                 
-#                 if len(mced[p][cs][m])==24 and len(Nreps_iter)==11:
-#                     mced[p][cs][m] = mced[p][cs][m][[0,2,4,6,8,10,12,14,16,18,20]]                
-#                 plt.plot(Nreps_iter, np.log2(np.e) * mced[p][cs][m], label=label, color=colors[m], marker=marks[m])
-#             plt.xlim(np.min(Nreps_iter), np.max(Nreps_iter))
-#             plt.xlabel('Number of crowdsourced labels')
-#             plt.ylabel('NLPD or Cross Entropy (bits)')
-#             plt.legend(loc='best')
-#             plt.grid(True)
-#             
-#             for i, m in enumerate(methods):
-#                 if not m in mced[p][cs]:
-#                     continue
-#                 plt.fill_between(Nreps_iter, np.log2(np.e) * (mced[p][cs][m] - mced_std[p][cs][m]), 
-#                                  np.log2(np.e) * (mced[p][cs][m] + mced_std[p][cs][m]), 
-#                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
-#             
-#             outputdir = get_output_dir(0, p, p_idx, cs)
-#             plt.savefig(outputdir + "/mce_density.pdf")            
-# 
-#     # Mean Cross Entropy
-#     mced, mced_std, methods = load_diff_results(nruns, weak_proportions, "mced.npy", negate_diff=True)
-#     methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
-#     for p_idx, p in enumerate(weak_proportions):
-#         for cs in cluster_spreads:        
-#             plt.figure()
-#             plt.title("Improvement of HeatmapBCC in \n Negative Log Probability Density of Density Estimates")
-#             for i, m in enumerate(methods):
-#                 label = m
-#                 
-#                 if m=='HeatmapBCC':
-#                     continue    
-#                 
-#                 if not m in mced[p][cs]:
-#                     continue            
-#                 
-#                 if len(mced[p][cs][m])==24 and len(Nreps_iter)==11:
-#                     mced[p][cs][m] = mced[p][cs][m][[0,2,4,6,8,10,12,14,16,18,20]]                
-#                 plt.plot(Nreps_iter, np.log2(np.e) * mced[p][cs][m], label=label, color=colors[m], marker=marks[m])
-#             plt.xlim(np.min(Nreps_iter), np.max(Nreps_iter))
-#             plt.xlabel('Number of crowdsourced labels')
-#             plt.ylabel('NLPD or Cross Entropy (bits)')
-#             plt.legend(loc='best')
-#             plt.grid(True)
-#             
-#             for i, m in enumerate(methods):
-#                 if not m in mced[p][cs]:
-#                     continue                
-#                 plt.fill_between(Nreps_iter, np.log2(np.e) * (mced[p][cs][m] - mced_std[p][cs][m]), 
-#                                  np.log2(np.e) * (mced[p][cs][m] + mced_std[p][cs][m]), 
-#                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
-#             
-#             outputdir = get_output_dir(0, p, p_idx, cs)
-#             plt.savefig(outputdir + "/mce_density_diff.pdf")
+    # Mean Cross Entropy
+    mced, mced_lq, mced_uq, methods = load_median_results(nruns, weak_proportions, "mced.npy")
+    methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
+    for p_idx, p in enumerate(weak_proportions):
+        for cs in cluster_spreads:        
+            plt.figure()
+            plt.title("Negative Log Probability Density of Density Estimates")
+            for i, m in enumerate(methods):
+                label = m
+                 
+                if not m in mced[p][cs]:
+                    continue
+                 
+                if len(mced[p][cs][m])==24 and len(Nreps_iter)==11:
+                    mced[p][cs][m] = mced[p][cs][m][[0,2,4,6,8,10,12,14,16,18,20]]                
+                plt.plot(Nreps_iter, np.log2(np.e) * mced[p][cs][m], label=label, color=colors[m], marker=marks[m])
+            plt.xlim(np.min(Nreps_iter), np.max(Nreps_iter))
+            plt.xlabel('Number of crowdsourced labels')
+            plt.ylabel('NLPD or Cross Entropy (bits)')
+            plt.legend(loc='best')
+            plt.grid(True)
+             
+            for i, m in enumerate(methods):
+                if not m in mced[p][cs]:
+                    continue
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (mced_lq[p][cs][m]), 
+                                 np.log2(np.e) * (mced_uq[p][cs][m]), 
+                                 alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
+             
+            outputdir = get_output_dir(p, cs)
+            plt.savefig(outputdir + "/mce_density.pdf")            
+ 
+    # Mean Cross Entropy
+    mced, mced_lq, mced_uq, methods = load_diff_results(nruns, weak_proportions, "mced.npy", negate_diff=True)
+    methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
+    for p_idx, p in enumerate(weak_proportions):
+        for cs in cluster_spreads:        
+            plt.figure()
+            plt.title("Improvement of HeatmapBCC in \n Negative Log Probability Density of Density Estimates")
+            for i, m in enumerate(methods):
+                label = m
+                 
+                if m=='HeatmapBCC':
+                    continue    
+                 
+                if not m in mced[p][cs]:
+                    continue            
+                 
+                if len(mced[p][cs][m])==24 and len(Nreps_iter)==11:
+                    mced[p][cs][m] = mced[p][cs][m][[0,2,4,6,8,10,12,14,16,18,20]]                
+                plt.plot(Nreps_iter, np.log2(np.e) * mced[p][cs][m], label=label, color=colors[m], marker=marks[m])
+            plt.xlim(np.min(Nreps_iter), np.max(Nreps_iter))
+            plt.xlabel('Number of crowdsourced labels')
+            plt.ylabel('NLPD or Cross Entropy (bits)')
+            plt.legend(loc='best')
+            plt.grid(True)
+             
+            for i, m in enumerate(methods):
+                if not m in mced[p][cs]:
+                    continue                
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (mced_lq[p][cs][m]), 
+                                 np.log2(np.e) * (mced_uq[p][cs][m]), 
+                                 alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
+             
+            outputdir = get_output_dir(p, cs)
+            plt.savefig(outputdir + "/mce_density_diff.pdf")
      
     # load results for predicting individual data points
     # Brier score
-    rmse, rmse_std, methods = load_mean_results(nruns, weak_proportions, "rmse.npy")   
+    rmse, rmse_lq, rmse_uq, methods = load_median_results(nruns, weak_proportions, "rmse.npy")   
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
             plt.figure()
@@ -335,14 +371,14 @@ if __name__ == '__main__':
             plt.grid(True)
             
             for i, m in enumerate(methods):
-                plt.fill_between(Nreps_iter, rmse[p][cs][m] - rmse_std[p][cs][m], rmse[p][cs][m] + rmse_std[p][cs][m], 
+                plt.fill_between(Nreps_iter, rmse_lq[p][cs][m], rmse_uq[p][cs][m], 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])
         
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/brier.pdf") 
          
     # AUC
-    auc, auc_std, methods = load_mean_results(nruns, weak_proportions, "auc.npy")
+    auc, auc_lq, auc_uq, methods = load_median_results(nruns, weak_proportions, "auc.npy")
     methods = ["HeatmapBCC", "IBCC", "IBCC+GP", "GP", "KDE"]
     for p in weak_proportions:
         for cs in cluster_spreads:        
@@ -365,14 +401,14 @@ if __name__ == '__main__':
             for i, m in enumerate(methods):
                 if not m in auc[p][cs]:
                     continue                    
-                plt.fill_between(Nreps_iter, auc[p][cs][m] - auc_std[p][cs][m], auc[p][cs][m] + auc_std[p][cs][m], 
+                plt.fill_between(Nreps_iter, auc_lq[p][cs][m], auc_uq[p][cs][m], 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/auc.pdf")
      
     # Differences in AUC
-    auc, auc_std, methods = load_diff_results(nruns, weak_proportions, "auc.npy")
+    auc, auc_lq, auc_uq, methods = load_diff_results(nruns, weak_proportions, "auc.npy")
     methods = ["HeatmapBCC", "IBCC", "IBCC+GP", "GP", "KDE"]
     for p in weak_proportions:
         for cs in cluster_spreads:        
@@ -398,14 +434,14 @@ if __name__ == '__main__':
             for i, m in enumerate(methods):
                 if not m in auc[p][cs]:
                     continue                    
-                plt.fill_between(Nreps_iter, auc[p][cs][m] - auc_std[p][cs][m], auc[p][cs][m] + auc_std[p][cs][m], 
+                plt.fill_between(Nreps_iter, auc_lq[p][cs][m], auc_uq[p][cs][m], 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/auc_diffs.pdf")        
      
     # Mean cross entropy
-    cross_entropy, cross_entropy_std, methods = load_mean_results(nruns, weak_proportions, "mce.npy")
+    cross_entropy, cross_entropy_lq, cross_entropy_uq, methods = load_median_results(nruns, weak_proportions, "mce.npy")
     methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
@@ -427,16 +463,16 @@ if __name__ == '__main__':
             for i, m in enumerate(methods):
                 if not m in cross_entropy[p][cs]:
                     continue                           
-                plt.fill_between(Nreps_iter, np.log2(np.e) * (cross_entropy[p][cs][m] - cross_entropy_std[p][cs][m]),
-                                 np.log2(np.e) * (cross_entropy[p][cs][m] + cross_entropy_std[p][cs][m]), 
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (cross_entropy_lq[p][cs][m]),
+                                 np.log2(np.e) * (cross_entropy_uq[p][cs][m]), 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/mce_discrete.pdf")
             print "saving to %s" % outputdir
             
     # Mean cross entropy difference
-    cross_entropy, cross_entropy_std, methods = load_diff_results(nruns, weak_proportions, "mce.npy", negate_diff=True)
+    cross_entropy, cross_entropy_lq, cross_entropy_uq, methods = load_diff_results(nruns, weak_proportions, "mce.npy", negate_diff=True)
     methods = ["KDE", "GP", "IBCC+GP", "IBCC", "HeatmapBCC"]
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
@@ -461,15 +497,15 @@ if __name__ == '__main__':
             for i, m in enumerate(methods):
                 if not m in cross_entropy[p][cs]:
                     continue                           
-                plt.fill_between(Nreps_iter, np.log2(np.e) * (cross_entropy[p][cs][m] - cross_entropy_std[p][cs][m]),
-                                 np.log2(np.e) * (cross_entropy[p][cs][m] + cross_entropy_std[p][cs][m]), 
+                plt.fill_between(Nreps_iter, np.log2(np.e) * (cross_entropy_lq[p][cs][m]),
+                                 np.log2(np.e) * (cross_entropy_uq[p][cs][m]), 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/mce_discrete_diffs.pdf")
             print "saving to %s" % outputdir
 
-    acc, acc_std, methods = load_mean_results(nruns, weak_proportions, "acc.npy")
+    acc, acc_lq, acc_uq, methods = load_median_results(nruns, weak_proportions, "acc.npy")
     for p_idx, p in enumerate(weak_proportions):
         for cs in cluster_spreads:        
             plt.figure()
@@ -486,14 +522,14 @@ if __name__ == '__main__':
             plt.grid(True)
             
             for i, m in enumerate(methods):
-                plt.fill_between(Nreps_iter, acc[p][cs][m] - acc_std[p][cs][m], acc[p][cs][m] + acc_std[p][cs][m], 
+                plt.fill_between(Nreps_iter, acc_lq[p][cs][m], acc_uq[p][cs][m], 
                                  alpha=0.1, edgecolor=colors[m], facecolor=colors[m])           
             
-            outputdir = get_output_dir(0, p, p_idx, cs)
+            outputdir = get_output_dir(p, cs)
             plt.savefig(outputdir + "/acc.pdf")
             print "saving to %s" % outputdir
                     
     # Variances within a single dataset
-    #rmse_var = load_mean_results(nruns, weak_proportions, "rmse_var.npy")
-    #auc_var = load_mean_results(nruns, weak_proportions, "auc_var.npy")
-    #mce_var = load_mean_results(nruns, weak_proportions, "mce_var.npy")    
+    #rmse_var = load_median_results(nruns, weak_proportions, "rmse_var.npy")
+    #auc_var = load_median_results(nruns, weak_proportions, "auc_var.npy")
+    #mce_var = load_median_results(nruns, weak_proportions, "mce_var.npy")    

@@ -174,16 +174,57 @@ def nlpd_beta(gold, est_mean, est_var):
     nlpd = np.sum(- beta.logpdf(gold, a, b)) 
     return nlpd / len(gold) # we return the mean per data point
 
+def test_gp(ls_i, train, test):
+    trainreps = np.in1d(dataidxreports, train)
+    xrep_train = xreports[trainreps, :]
+    yrep_train = yreports[trainreps, :]
+    rep_train = reports[trainreps]
+
+    x_test = x_all[test]
+    y_test = y_all[test]
+    
+    shape_s0 = 1000000.0
+    rate_s0 = shape_s0 * output_scale
+    shape_ls = 2.0
+    rate_ls = 2.0 / ls[0]
+    gpgrid = GPGrid(dims=(nx, ny), z0=0.5, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls)
+    train_coords = np.concatenate((xrep_train.astype(int), yrep_train.astype(int)), axis=1)
+    gpgrid.fit(train_coords, rep_train)
+    test_coords = np.concatenate((x_test[:, np.newaxis], y_test[:, np.newaxis]), axis=1)
+    gp_preds, _ = gpgrid.predict(test_coords, variance_method='sample')
+    lb = gpgrid.lowerbound()
+    
+    return np.round(gp_preds), gp_preds, lb
+
+def test_sklearn_gp(ls_i, train, test):
+    trainreps = np.in1d(dataidxreports, train)
+    xrep_train = xreports[trainreps]
+    yrep_train = yreports[trainreps]
+    rep_train = reports[trainreps]
+    
+    x_test = x_all[test][:, np.newaxis]
+    y_test = y_all[test][:, np.newaxis]
+    
+    kernel = Matern(length_scale=ls_i)
+    gpc = GPC(kernel=kernel, warm_start=False, n_restarts_optimizer=0, optimizer=None)
+    trainX = np.concatenate((xrep_train, yrep_train), axis=1)
+    gpc.fit(trainX, rep_train)
+    testX = np.concatenate((x_test, y_test), axis=1)
+    preds = gpc.predict(testX)
+    probs = gpc.predict_proba(testX)[:, 1]
+    score = gpc.log_marginal_likelihood()
+    return preds, probs, score
+
 if __name__ == '__main__':    
-    N, x_all, y_all, f_all, t_all = gen_synth_ground_truth(nx, ny, Nreports, ls, output_scale)
-#     N = nx
-#     x_all = np.arange(nx)
-#     y_all = np.zeros(nx)
-#     f_all = np.zeros(nx)
-#     f_all[:nx/2] = -10
-#     f_all[nx/2:] = 10
-#     rho_all = sigmoid(f_all)
-#     t_all = bernoulli.rvs(rho_all)
+#     N, x_all, y_all, f_all, t_all = gen_synth_ground_truth(nx, ny, Nreports, ls, output_scale)
+    N = nx
+    x_all = np.arange(nx)
+    y_all = np.zeros(nx)
+    f_all = np.zeros(nx)
+    f_all[:nx/2] = -10
+    f_all[nx/2:] = 10
+    rho_all = sigmoid(f_all)
+    t_all = bernoulli.rvs(rho_all)
     
     C, reporter_ids, reports, pi, xreports, yreports, dataidxreports = gen_synth_reports(
                                     N, Nreports, diags, off_diags, biases, x_all, y_all, t_all, S)
@@ -194,47 +235,6 @@ if __name__ == '__main__':
     reports = reports[sortidxs]
 
     dataidxs = np.arange(N)
-    
-    def test_gp(ls_i, train, test):
-        trainreps = np.in1d(dataidxreports, train)
-        xrep_train = xreports[trainreps, :]
-        yrep_train = yreports[trainreps, :]
-        rep_train = reports[trainreps]
-
-        x_test = x_all[test]
-        y_test = y_all[test]
-        
-        shape_s0 = 1000000.0
-        rate_s0 = shape_s0 * output_scale
-        shape_ls = 2.0
-        rate_ls = 2.0 / ls[0]
-        gpgrid = GPGrid(dims=(nx, ny), z0=0.5, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls)
-        train_coords = np.concatenate((xrep_train.astype(int), yrep_train.astype(int)), axis=1)
-        gpgrid.fit(train_coords, rep_train)
-        test_coords = np.concatenate((x_test[:, np.newaxis], y_test[:, np.newaxis]), axis=1)
-        gp_preds, _ = gpgrid.predict(test_coords, variance_method='sample')
-        lb = gpgrid.lowerbound()
-        
-        return np.round(gp_preds), gp_preds, lb
-    
-    def test_sklearn_gp(ls_i, train, test):
-        trainreps = np.in1d(dataidxreports, train)
-        xrep_train = xreports[trainreps]
-        yrep_train = yreports[trainreps]
-        rep_train = reports[trainreps]
-        
-        x_test = x_all[test][:, np.newaxis]
-        y_test = y_all[test][:, np.newaxis]
-        
-        kernel = Matern(length_scale=ls_i)
-        gpc = GPC(kernel=kernel, warm_start=False, n_restarts_optimizer=0, optimizer=None)
-        trainX = np.concatenate((xrep_train, yrep_train), axis=1)
-        gpc.fit(trainX, rep_train)
-        testX = np.concatenate((x_test, y_test), axis=1)
-        preds = gpc.predict(testX)
-        probs = gpc.predict_proba(testX)[:, 1]
-        score = gpc.log_marginal_likelihood()
-        return preds, probs, score
     
     kfold_random_state = np.random.randint(0, 100)
     kf = KFold(n_splits=10, shuffle=True, random_state = kfold_random_state)
