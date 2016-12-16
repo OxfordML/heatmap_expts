@@ -123,13 +123,13 @@ if __name__ == '__main__':
         # REPORTS
         nneg = np.sum(C[:, 3] == 0)
         npos = np.sum(C[:, 3] > 0)
-        neg_sample_size = 0.2#1.0#0.1 # how many of the "no mark" labels to use?
-        Nreports = 0.5 * np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
-        Nreps_initial = 0.1 * Nreports #60 #50 # number of labels in first iteration data set. 
+        neg_sample_size = 1#1.0#0.1 # how many of the "no mark" labels to use?
+        Nreports = np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
+        Nreps_initial = 0.65 * Nreports #60 #50 # number of labels in first iteration data set. 
         Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
-        #C_sample = C[np.random.choice(C.shape[0], Nreps_initial, replace=False), :]
+        C_sample = C[np.random.choice(C.shape[0], Nreps_initial, replace=False), :]
         
 #         C1 = np.random.choice(10000, Nreps_initial, replace=False)[:, np.newaxis]
 #         C2 = np.random.choice(10000, Nreps_initial, replace=False)[:, np.newaxis]
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     
         print "number of reports: %i" % Nreports
         
-        lengthscales =[128, 64, 32, 16, 8, 4, 2, 1]#, 256, 512]
+        lengthscales =[5]#[128, 64, 32, 20, 16, 8, 4, 2, 1]#, 256, 512]
         
         lml_h = np.zeros(len(lengthscales))
         lml_g = np.zeros(len(lengthscales))
