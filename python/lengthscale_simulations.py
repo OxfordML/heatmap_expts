@@ -18,14 +18,17 @@ Experiment 2b: Possible alternative view to plot. Keep a fixed sparseness, but d
 
 TO CHECK
 
-1. This seems okay on a simple test dataset -- check on larger/different data. Does the VB GB still work now we have removed the terms that should have cancelled out? D-tr(K^-1C) = D - invK_expecF
-3. Does LB now work on HeatmapBCC on larger dataset?
+3. LB seems wrong on HeatmapBCC? Trying with stronger alpha. Try viewing f with a fixed length scale -- this shows an
+unexpected function shape. It should be basically identical to the GP without BCC, since the worker is 100% reliable.
+To solve this, let's visualise the f function at each iteration of the heatmapbcc vb loop. 
+First step -- rerunning without a fixed number of G updates per iteration. Perhaps this was the problem. 
+
 4. Permit Output scale to vary
 5. Different data: noisy labels. How well do we model the information source reliability?
 6. New ground truth.
 
 COMPLETE-ISH
-
+1. This seems okay on a simple test dataset -- check on larger/different data. Does the VB GB still work now we have removed the terms that should have cancelled out? D-tr(K^-1C) = D - invK_expecF
 2. What is going on with heatmapBCC convergence? == fixed to remove checking of fractions and use lower bound in this expt
 
 """
@@ -210,25 +213,25 @@ def test_vb_heatmapbcc(ls_i, train, test, vm='rough'):
     shape_ls = 2.0
     rate_ls = 2.0 / ls_i
     
-    alpha0 = np.array([[1, 0.1], [0.1, 1]])
+    alpha0 = np.array([[10000, 0.1], [0.1, 10000]])
     hbcc = HeatMapBCC(nx, ny, nclasses=2, nscores=2, alpha0=alpha0, K=1, z0=0.5, 
                         shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls)
     #hbcc.conv_threshold_G = 1e-6
     hbcc.conv_threshold = 1e-6
     hbcc.conv_check_freq = 1
     hbcc.verbose = True
-    hbcc.max_iterations = 10
+    hbcc.max_iterations = 500
     hbcc.uselowerbound = True
     
     train_coords = np.concatenate((xrep_train, yrep_train), axis=1)
     crowdlabels = np.concatenate((np.zeros((np.sum(trainreps), 1)), train_coords, rep_train), axis=1)
     hbcc.combine_classifications(crowdlabels)
-    preds, _, _ = hbcc.predict(x_test[:, np.newaxis], y_test[:, np.newaxis], variance_method=vm)
+    preds, rho, _ = hbcc.predict(x_test[:, np.newaxis], y_test[:, np.newaxis], variance_method=vm)
     lb = hbcc.lowerbound()
     
-    preds = preds[1, :]
+    rho = rho[1, :]
     
-    return np.round(preds), preds, lb, hbcc.heatGP[1].obs_f
+    return np.round(preds), rho, lb, hbcc.heatGP[1].obs_f
 
 def test_vb_gp(ls_i, train, test, vm='sample'):
     trainreps = np.in1d(dataidxreports, train)
@@ -488,7 +491,7 @@ if __name__ == '__main__':
                                                                                      ls_i, train, test, vm='rough')
             lb_results[i] += lb_k
          
-        if np.sum(lb_results[i] >= lb_results[:i]) == i:
+        if (ls_i < 1.65) and (ls_i > 1.63): #np.sum(lb_results[i] >= lb_results[:i]) == i:
             chosen_rho_mean = rho_mean
             chosen_ls = ls_i
             chosen_t_pred = t_pred 
