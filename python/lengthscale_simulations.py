@@ -78,6 +78,8 @@ biases = np.ones((S, J))
 biases[:nReliable, :] = 0
 biases[nReliable:, :] = 0
 
+methods = ['heatmapbcc', 'gbvb', 'gpvbanal', 'gplaplace']
+
 def matern_3_2(xvals, yvals, ls):
     Kx = np.abs(xvals) * 3**0.5 / ls[0]
     Kx = (1 + Kx) * np.exp(-Kx)
@@ -213,14 +215,14 @@ def test_vb_heatmapbcc(ls_i, train, test, vm='rough'):
     shape_ls = 2.0
     rate_ls = 2.0 / ls_i
     
-    alpha0 = np.array([[10000, 0.1], [0.1, 10000]])
+    alpha0 = np.array([[1, 0.5], [0.5, 1]])
     hbcc = HeatMapBCC(nx, ny, nclasses=2, nscores=2, alpha0=alpha0, K=1, z0=0.5, 
                         shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls)
     #hbcc.conv_threshold_G = 1e-6
     hbcc.conv_threshold = 1e-6
     hbcc.conv_check_freq = 1
     hbcc.verbose = True
-    hbcc.max_iterations = 500
+    hbcc.max_iterations = 10
     hbcc.uselowerbound = True
     
     train_coords = np.concatenate((xrep_train, yrep_train), axis=1)
@@ -231,7 +233,7 @@ def test_vb_heatmapbcc(ls_i, train, test, vm='rough'):
     
     rho = rho[1, :]
     
-    return np.round(preds), rho, lb, hbcc.heatGP[1].obs_f
+    return np.round(preds[1, :]), rho, lb, hbcc.heatGP[1].obs_f.flatten()
 
 def test_vb_gp(ls_i, train, test, vm='sample'):
     trainreps = np.in1d(dataidxreports, train)
@@ -331,280 +333,298 @@ if __name__ == '__main__':
     kfold_random_state = np.random.randint(0, 100)
     kf = KFold(n_splits=10, shuffle=True, random_state = kfold_random_state)
     
-    lb_results = np.zeros(len(lsrange), dtype=float)
-    dll_results = np.zeros(len(lsrange), dtype=float)
-    acc_results = np.zeros(len(lsrange), dtype=float)
-    #nlpd_results = np.zeros(len(lsrange))
-    roc_results = np.zeros(len(lsrange), dtype=float)
-    
-    for i, ls_i in enumerate(lsrange): 
-        t_pred = np.zeros(N)
-        rho_mean = np.zeros(N)
-        f_train = np.zeros(Nreports) # inferred latent function values at the training locations
-        
-        # reset the shuffling
-        kf.random_state = kfold_random_state
-        for train, test in kf.split(dataidxs):     
-        
-            t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(ls_i, train, test)
-            lb_results[i] += lb_k
-            dll_results[i] += dll_k
-        
-        if np.sum(lb_results[i] >= lb_results[:i]) == i:
-            chosen_rho_mean = rho_mean
-            chosen_ls = ls_i
-            chosen_t_pred = t_pred 
-            chosen_f_train = f_train           
-        
-        #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
-        acc_results[i] = accuracy_score(t_all, t_pred)
-        roc_results[i] = roc_auc_score(t_all, rho_mean)
-            
-        #print "Cross entropy between densities: %.2f" % nlpd_results[i]
-        print "Accuracy: %.2f" % acc_results[i] 
-
-    lb_results /= kf.n_splits
-    dll_results /= kf.n_splits  
-
     p1 = plt.figure()
-    plt.plot(loglsrange, lb_results, label='GPC VB', color='b')
-    plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', label='GPC VB optimal length scale', color='b')
-    plt.title('Lower bound')
-    
     p2 = plt.figure()
-    plt.plot(loglsrange, acc_results, label='GPC VB', color='b')
-    plt.title('Accuracy')
-    
     p3 = plt.figure()
-    plt.plot(loglsrange, roc_results, label='GPC VB', color='b')
-    plt.title('ROC AUC')
-    
     p4 = plt.figure()
-    sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-    plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, ls=%.2f' % chosen_ls, color='b')
-    plt.title('rho and t')
-    
-#     plt.scatter(x_all, chosen_t_pred, color='b', marker='o')
-    
     p5 = plt.figure()
-    plt.plot(xreports, chosen_f_train, label='GPC VB, ls=%.2f' % chosen_ls, color='b')
-    plt.title('f at the training points')
-        
-#     p1 = plt.figure(p1.number)
-#     plt.plot(loglsrange, dll_results, label='GPC VB DLL', color='b', linestyle='dashed')
-#     plt.title('Lower bound')
-        
-    #plt.figure()
-    #plt.plot(lsrange, nlpd_results)
-    #plt.title('NLPD')
     
-    lb_results = np.zeros(len(lsrange), dtype=float)
-    dll_results = np.zeros(len(lsrange), dtype=float)
-    acc_results = np.zeros(len(lsrange), dtype=float)
-    #nlpd_results = np.zeros(len(lsrange))
-    roc_results = np.zeros(len(lsrange), dtype=float)
-    
-    for i, ls_i in enumerate(lsrange): 
-        t_pred = np.zeros(N)
-        rho_mean = np.zeros(N)
-        f_train = np.zeros(Nreports) # inferred latent function values at the training locations
+    if 'gbvb' in methods:
         
-        # reset the shuffling
-        kf.random_state = kfold_random_state
-        for train, test in kf.split(dataidxs):     
+        lb_results = np.zeros(len(lsrange), dtype=float)
+        dll_results = np.zeros(len(lsrange), dtype=float)
+        acc_results = np.zeros(len(lsrange), dtype=float)
+        #nlpd_results = np.zeros(len(lsrange))
+        roc_results = np.zeros(len(lsrange), dtype=float)
         
-            t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(
-                                                                                     ls_i, train, test, vm='rough')
-            lb_results[i] += lb_k
-            dll_results[i] += dll_k      
-        
-        if np.sum(lb_results[i] >= lb_results[:i]) == i:
-            chosen_rho_mean = rho_mean
-            chosen_ls = ls_i
-            chosen_t_pred = t_pred 
-            chosen_f_train = f_train           
-        
-        #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
-        acc_results[i] = accuracy_score(t_all, t_pred)
-        roc_results[i] = roc_auc_score(t_all, rho_mean)
+        for i, ls_i in enumerate(lsrange): 
+            t_pred = np.zeros(N)
+            rho_mean = np.zeros(N)
+            f_train = np.zeros(Nreports) # inferred latent function values at the training locations
             
-        #print "Cross entropy between densities: %.2f" % nlpd_results[i]
-        print "Accuracy: %.2f" % acc_results[i]     
+            # reset the shuffling
+            kf.random_state = kfold_random_state
+            for train, test in kf.split(dataidxs):     
+            
+                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(ls_i, train, test)
+                lb_results[i] += lb_k
+                dll_results[i] += dll_k
+            
+            if np.sum(lb_results[i] >= lb_results[:i]) == i:
+                chosen_rho_mean = rho_mean
+                chosen_ls = ls_i
+                chosen_t_pred = t_pred 
+                chosen_f_train = f_train           
+            
+            #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
+            acc_results[i] = accuracy_score(t_all, t_pred)
+            roc_results[i] = roc_auc_score(t_all, rho_mean)
+                
+            #print "Cross entropy between densities: %.2f" % nlpd_results[i]
+            print "Accuracy: %.2f" % acc_results[i] 
     
-    lb_results /= kf.n_splits
-    dll_results /= kf.n_splits  
+        lb_results /= kf.n_splits
+        dll_results /= kf.n_splits  
     
-#     p1 = plt.figure(p1.number)
-#     plt.plot(loglsrange, lb_results, label='GPC VB, analytical pred.', color='g')
-#     plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-#                 label='GPC VB, analytical pred., optimal length scale', color='g')    
-#     plt.title('Lower bound')
-#     plt.legend(loc='best')
+        plt.figure(p1.number)
+        plt.plot(loglsrange, lb_results, label='GPC VB', color='b')
+        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', label='GPC VB optimal length scale', color='b')
+        plt.title('Lower bound')
+        
+        p2 = plt.figure(p2.number)
+        plt.plot(loglsrange, acc_results, label='GPC VB', color='b')
+        plt.title('Accuracy')
+        
+        p3 = plt.figure(p3.number)
+        plt.plot(loglsrange, roc_results, label='GPC VB', color='b')
+        plt.title('ROC AUC')
+        
+        p4 = plt.figure(p4.number)
+        sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
+        plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, ls=%.2f' % chosen_ls, color='b')
+        plt.title('rho and t')
     
-    p2 = plt.figure(p2.number)
-    plt.plot(loglsrange, acc_results, label='GPC VB, analytical pred.', color='g')
-    plt.title('Accuracy')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
+    #     plt.scatter(x_all, chosen_t_pred, color='b', marker='o')
+        
+        p5 = plt.figure(p5.number)
+        plt.plot(xreports, chosen_f_train, label='GPC VB, ls=%.2f' % chosen_ls, color='b')
+        plt.title('f at the training points')
+            
+    #     p1 = plt.figure(p1.number)
+    #     plt.plot(loglsrange, dll_results, label='GPC VB DLL', color='b', linestyle='dashed')
+    #     plt.title('Lower bound')
+            
+        #plt.figure()
+        #plt.plot(lsrange, nlpd_results)
+        #plt.title('NLPD')
+        
+    if 'gpvbanal' in methods:
+        
+        lb_results = np.zeros(len(lsrange), dtype=float)
+        dll_results = np.zeros(len(lsrange), dtype=float)
+        acc_results = np.zeros(len(lsrange), dtype=float)
+        #nlpd_results = np.zeros(len(lsrange))
+        roc_results = np.zeros(len(lsrange), dtype=float)
+        
+        for i, ls_i in enumerate(lsrange): 
+            t_pred = np.zeros(N)
+            rho_mean = np.zeros(N)
+            f_train = np.zeros(Nreports) # inferred latent function values at the training locations
+            
+            # reset the shuffling
+            kf.random_state = kfold_random_state
+            for train, test in kf.split(dataidxs):     
+            
+                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(
+                                                                                         ls_i, train, test, vm='rough')
+                lb_results[i] += lb_k
+                dll_results[i] += dll_k      
+            
+            if np.sum(lb_results[i] >= lb_results[:i]) == i:
+                chosen_rho_mean = rho_mean
+                chosen_ls = ls_i
+                chosen_t_pred = t_pred 
+                chosen_f_train = f_train           
+            
+            #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
+            acc_results[i] = accuracy_score(t_all, t_pred)
+            roc_results[i] = roc_auc_score(t_all, rho_mean)
+                
+            #print "Cross entropy between densities: %.2f" % nlpd_results[i]
+            print "Accuracy: %.2f" % acc_results[i]     
+        
+        lb_results /= kf.n_splits
+        dll_results /= kf.n_splits  
+        
+    #     p1 = plt.figure(p1.number)
+    #     plt.plot(loglsrange, lb_results, label='GPC VB, analytical pred.', color='g')
+    #     plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
+    #                 label='GPC VB, analytical pred., optimal length scale', color='g')    
+    #     plt.title('Lower bound')
+    #     plt.legend(loc='best')
+        
+        p2 = plt.figure(p2.number)
+        plt.plot(loglsrange, acc_results, label='GPC VB, analytical pred.', color='g')
+        plt.title('Accuracy')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+        
+        p3 = plt.figure(p3.number)
+        plt.plot(loglsrange, roc_results, label='GPC VB, analytical pred.', color='g')
+        plt.title('ROC AUC')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+        
+        p4 = plt.figure(p4.number)
+        sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
+        plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, analytical pred., ls=%.2f' % chosen_ls,
+                  color='g')
+        plt.title('rho and t')
+        plt.legend(loc='best')
+        
+    #     plt.scatter(x_all, chosen_t_pred, color='g', marker='x')
+    #     plt.scatter(x_all, t_all, color='black', marker='*')
+        
+    #     p5 = plt.figure(p5.number)
+    #     plt.plot(xreports, chosen_f_train, label='GPC VB, analytical pred., ls=%.2f' % chosen_ls, color='g')
+    #     plt.title('f at the training points')    
+    #     plt.legend(loc='best')    
+        
+    #     p1 = plt.figure(p1.number)
+    #     plt.plot(loglsrange, dll_results, label='GPC VB, analytical pred., DLL', color='g', linestyle='dashed')
+    #     plt.title('Lower bound')    
     
-    p3 = plt.figure(p3.number)
-    plt.plot(loglsrange, roc_results, label='GPC VB, analytical pred.', color='g')
-    plt.title('ROC AUC')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
-    
-    p4 = plt.figure(p4.number)
-    sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-    plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, analytical pred., ls=%.2f' % chosen_ls,
-              color='g')
-    plt.title('rho and t')
-    plt.legend(loc='best')
-    
-#     plt.scatter(x_all, chosen_t_pred, color='g', marker='x')
-#     plt.scatter(x_all, t_all, color='black', marker='*')
-    
-#     p5 = plt.figure(p5.number)
-#     plt.plot(xreports, chosen_f_train, label='GPC VB, analytical pred., ls=%.2f' % chosen_ls, color='g')
-#     plt.title('f at the training points')    
-#     plt.legend(loc='best')    
-    
-#     p1 = plt.figure(p1.number)
-#     plt.plot(loglsrange, dll_results, label='GPC VB, analytical pred., DLL', color='g', linestyle='dashed')
-#     plt.title('Lower bound')    
- 
-    lb_results = np.zeros(len(lsrange), dtype=float)
-    dll_results = np.zeros(len(lsrange), dtype=float)
-    acc_results = np.zeros(len(lsrange), dtype=float)
-    #nlpd_results = np.zeros(len(lsrange))
-    roc_results = np.zeros(len(lsrange), dtype=float)
-    
-    for i, ls_i in enumerate(lsrange): 
-        t_pred = np.zeros(N)
-        rho_mean = np.zeros(N)
-        f_train = np.zeros(Nreports) # inferred latent function values at the training locations
-         
-        # reset the shuffling
-        kf.random_state = kfold_random_state
-        for train, test in kf.split(dataidxs):     
-         
-            t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_vb_heatmapbcc(
-                                                                                     ls_i, train, test, vm='rough')
-            lb_results[i] += lb_k
-         
-        if (ls_i < 1.65) and (ls_i > 1.63): #np.sum(lb_results[i] >= lb_results[:i]) == i:
-            chosen_rho_mean = rho_mean
-            chosen_ls = ls_i
-            chosen_t_pred = t_pred 
-            chosen_f_train = f_train           
-         
-        #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
-        acc_results[i] = accuracy_score(t_all, t_pred)
-        roc_results[i] = roc_auc_score(t_all, rho_mean)
+    if 'heatmapbcc' in methods:
+     
+        lb_results = np.zeros(len(lsrange), dtype=float)
+        dll_results = np.zeros(len(lsrange), dtype=float)
+        acc_results = np.zeros(len(lsrange), dtype=float)
+        #nlpd_results = np.zeros(len(lsrange))
+        roc_results = np.zeros(len(lsrange), dtype=float)
+        
+        for i, ls_i in enumerate(lsrange): 
+            t_pred = np.zeros(N)
+            rho_mean = np.zeros(N)
+            f_train = np.zeros(Nreports) # inferred latent function values at the training locations
              
-        #print "Cross entropy between densities: %.2f" % nlpd_results[i]
-        print "Accuracy: %.2f" % acc_results[i]     
-     
-    lb_results /= kf.n_splits
-    dll_results /= kf.n_splits  
-     
-    p1 = plt.figure(p1.number)
-    plt.plot(loglsrange, lb_results, label='HeatmapBCC VB, analytical pred.', color='k')
-    plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-                label='HeatmapBCC VB, analytical pred., optimal length scale', color='k')
-    plt.title('Lower bound')
-    plt.legend(loc='best')
-     
-    p2 = plt.figure(p2.number)
-    plt.plot(loglsrange, acc_results, label='HeatmapBCC VB, analytical pred.', color='k')
-    plt.title('Accuracy')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
-     
-    p3 = plt.figure(p3.number)
-    plt.plot(loglsrange, roc_results, label='HeatmapBCC VB, analytical pred.', color='k')
-    plt.title('ROC AUC')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
-     
-    p4 = plt.figure(p4.number)
-    sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-    plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='HeatmapBCC VB, analytical pred., ls=%.2f' % chosen_ls,
-              color='k')
-    plt.title('rho and t')
-    plt.legend(loc='best')
-     
-    p5 = plt.figure(p5.number)
-    plt.plot(xreports, chosen_f_train, label='HeatmapBCC VB, analytical pred., ls=%.2f' % chosen_ls, color='k')
-    plt.title('f at the training points')    
-    plt.legend(loc='best')    
-     
-#     p1 = plt.figure(p1.number)
-#     plt.plot(loglsrange, dll_results, label='HeatmapBCC VB, analytical pred., DLL', color='g', linestyle='dashed')
-#     plt.title('Lower bound')     
+            # reset the shuffling
+            kf.random_state = kfold_random_state
+            for train, test in kf.split(dataidxs):     
+             
+                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_vb_heatmapbcc(
+                                                                                         ls_i, train, test, vm='rough')
+                lb_results[i] += lb_k
+             
+            if np.sum(lb_results[i] >= lb_results[:i]) == i:
+                chosen_rho_mean = rho_mean
+                chosen_ls = ls_i
+                chosen_t_pred = t_pred 
+                chosen_f_train = f_train           
+             
+            #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
+            acc_results[i] = accuracy_score(t_all, t_pred)
+            roc_results[i] = roc_auc_score(t_all, rho_mean)
+                 
+            #print "Cross entropy between densities: %.2f" % nlpd_results[i]
+            print "Accuracy: %.2f" % acc_results[i]     
+         
+        lb_results /= kf.n_splits
+        dll_results /= kf.n_splits  
+         
+        p1 = plt.figure(p1.number)
+        plt.plot(loglsrange, lb_results, label='HeatmapBCC VB, analytical pred.', color='k')
+        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
+                    label='HeatmapBCC VB, analytical pred., optimal length scale', color='k')
+        plt.title('Lower bound')
+        plt.legend(loc='best')
+         
+        p2 = plt.figure(p2.number)
+        plt.plot(loglsrange, acc_results, label='HeatmapBCC VB, analytical pred.', color='k')
+        plt.title('Accuracy')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+         
+        p3 = plt.figure(p3.number)
+        plt.plot(loglsrange, roc_results, label='HeatmapBCC VB, analytical pred.', color='k')
+        plt.title('ROC AUC')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+         
+        p4 = plt.figure(p4.number)
+        sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
+        plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='HeatmapBCC VB, analytical pred., ls=%.2f' % chosen_ls,
+                  color='k')
+        plt.title('rho and t')
+        plt.legend(loc='best')
+         
+        p5 = plt.figure(p5.number)
+        plt.plot(xreports, chosen_f_train, label='HeatmapBCC VB, analytical pred., ls=%.2f' % chosen_ls, color='k')
+        plt.title('f at the training points')    
+        plt.legend(loc='best')    
+         
+    #     p1 = plt.figure(p1.number)
+    #     plt.plot(loglsrange, dll_results, label='HeatmapBCC VB, analytical pred., DLL', color='g', linestyle='dashed')
+    #     plt.title('Lower bound')     
     
-    lb_results = np.zeros(len(lsrange), dtype=float)
-    acc_results = np.zeros(len(lsrange), dtype=float)
-    #nlpd_results = np.zeros(len(lsrange))
-    roc_results = np.zeros(len(lsrange), dtype=float)
-    
-    for i, ls_i in enumerate(lsrange): 
-        t_pred = np.zeros(N)
-        rho_mean = np.zeros(N)
-        f_train = np.zeros(Nreports)
+    if 'gplaplace' in methods:
         
-        # reset the shuffling
-        kf.random_state = kfold_random_state        
-        for train, test in kf.split(dataidxs):        
+        lb_results = np.zeros(len(lsrange), dtype=float)
+        acc_results = np.zeros(len(lsrange), dtype=float)
+        #nlpd_results = np.zeros(len(lsrange))
+        roc_results = np.zeros(len(lsrange), dtype=float)
         
-            t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_sklearn_gp(ls_i, train, test)
-            lb_results[i] += lb_k
-        
-        if np.sum(lb_results[i] >= lb_results[:i]) == i:
-            chosen_t_pred = t_pred
-            chosen_rho_mean = rho_mean
-            chosen_ls = ls_i            
-            chosen_f_train = f_train                        
-                        
-        #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
-        acc_results[i] = accuracy_score(t_all, t_pred)
-        roc_results[i] = roc_auc_score(t_all, rho_mean)
+        for i, ls_i in enumerate(lsrange): 
+            t_pred = np.zeros(N)
+            rho_mean = np.zeros(N)
+            f_train = np.zeros(Nreports)
             
-        #print "Cross entropy between densities: %.2f" % nlpd_results[i]
-        print "Accuracy: %.2f" % acc_results[i] 
+            # reset the shuffling
+            kf.random_state = kfold_random_state        
+            for train, test in kf.split(dataidxs):        
+            
+                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_sklearn_gp(ls_i, train, test)
+                lb_results[i] += lb_k
+            
+            if np.sum(lb_results[i] >= lb_results[:i]) == i:
+                chosen_t_pred = t_pred
+                chosen_rho_mean = rho_mean
+                chosen_ls = ls_i            
+                chosen_f_train = f_train                        
+                            
+            #nlpd_results[i] = nlpd_beta(rho_test, rho_mean, rho_var)
+            acc_results[i] = accuracy_score(t_all, t_pred)
+            roc_results[i] = roc_auc_score(t_all, rho_mean)
+                
+            #print "Cross entropy between densities: %.2f" % nlpd_results[i]
+            print "Accuracy: %.2f" % acc_results[i] 
+    
+        lb_results /= kf.n_splits
+    
+        p1 = plt.figure(p1.number)
+        plt.plot(loglsrange, lb_results, label='GPC Laplace', color='r')
+        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
+                    label='GPC Laplace optimal length scale', color='r')    
+        plt.title('Lower bound')
+        plt.legend(loc='best')
+        
+        p2 = plt.figure(p2.number)
+        plt.plot(loglsrange, acc_results, label='GPC Laplace', color='r')
+        plt.title('Accuracy')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+        
+        p3 = plt.figure(p3.number)
+        plt.plot(loglsrange, roc_results, label='GPC Laplace', color='r')
+        plt.title('ROC AUC')
+        plt.legend(loc='best')
+        plt.ylim(-0.01, 1.01)
+        
+        p4 = plt.figure(p4.number)
+        sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
+        plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
+        plt.title('rho and t')
+        plt.legend(loc='best')
+        
+    #     plt.scatter(x_all, chosen_t_pred, color='r', marker='x')
+       
+        p5 = plt.figure(p5.number)
+        plt.plot(xreports, chosen_f_train, label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
+        plt.title('f at the training points')    
+        plt.legend(loc='best')
 
-    lb_results /= kf.n_splits
-
-    p1 = plt.figure(p1.number)
-    plt.plot(loglsrange, lb_results, label='GPC Laplace', color='r')
-    plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-                label='GPC Laplace optimal length scale', color='r')    
-    plt.title('Lower bound')
-    plt.legend(loc='best')
-    
-    p2 = plt.figure(p2.number)
-    plt.plot(loglsrange, acc_results, label='GPC Laplace', color='r')
-    plt.title('Accuracy')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
-    
-    p3 = plt.figure(p3.number)
-    plt.plot(loglsrange, roc_results, label='GPC Laplace', color='r')
-    plt.title('ROC AUC')
-    plt.legend(loc='best')
-    plt.ylim(-0.01, 1.01)
-    
-    p4 = plt.figure(p4.number)
-    sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-    plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
-    plt.title('rho and t')
-    plt.legend(loc='best')
-    
-#     plt.scatter(x_all, chosen_t_pred, color='r', marker='x')
+    #ground truth
+    plt.figure(p4.number)    
     plt.scatter(x_all, t_all, color='black', marker='*', label='ground truth')
-    
-    p5 = plt.figure(p5.number)
-    plt.plot(xreports, chosen_f_train, label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
-    plt.title('f at the training points')    
     plt.legend(loc='best')
     
     outputpath = './output/lengthscale_plots/plot_gpc/%s'
