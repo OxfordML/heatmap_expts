@@ -125,7 +125,7 @@ if __name__ == '__main__':
         npos = np.sum(C[:, 3] > 0)
         neg_sample_size = 1#1.0#0.1 # how many of the "no mark" labels to use?
         Nreports = np.floor(neg_sample_size * nneg) + npos #C.shape[0] # total number of reports in complete data set - don't use whole dataset, it's too large
-        Nreps_initial = 0.65 * Nreports #60 #50 # number of labels in first iteration data set. 
+        Nreps_initial = int(np.round(0.65 * Nreports)) #60 #50 # number of labels in first iteration data set. 
         Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
@@ -141,8 +141,8 @@ if __name__ == '__main__':
         
         J = 2 # number of classes
         L = len(np.unique(C[:, 3])) # number of scores/label types
-        nx = prn.nx
-        ny = prn.ny
+        nx = int(prn.nx)
+        ny = int(prn.ny)
         x_all, y_all = np.unravel_index(linear_unique[testidxs], (nx, ny))
         t_all = t_all[testidxs]
         Ntest = len(x_all) # no. points in the grid to test
