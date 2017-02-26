@@ -53,3 +53,5 @@ random9.png
 /lengthscale_prn_test_structural_damage_3.png
 /lengthscale_prn_test_tarp.png
 data/lengthscale_sim_expt/synth_sparse_lengthscale_sim_data
+output/lengthscale_plots
+output/synth
