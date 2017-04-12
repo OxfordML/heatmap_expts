@@ -7,8 +7,8 @@ import sys
 sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
 sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
 
-from scipy.stats import beta, bernoulli, multivariate_normal as mvn
-import prediction_tests
+#from scipy.stats import beta, bernoulli, multivariate_normal as mvn
+#import prediction_tests
 import numpy as np
 import logging
 import os
@@ -19,7 +19,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 import prn
 from heatmapbcc import HeatMapBCC
-from gpgrid import GPGrid
+from gp_classifier_vb import GPClassifierVB
 
 # HELPER FUNCTIONS -------------------------------------------------------------------------------------------------------
 
@@ -181,9 +181,9 @@ if __name__ == '__main__':
     
         print "number of reports: %i" % Nreports
         
-        lengthscales =[5]#[128, 64, 32, 20, 16, 8, 4, 2, 1]#, 256, 512]
+        lengthscales =[128, 64, 32, 20, 16, 8, 4, 2, 1]#, 256, 512]
         
-        lml_h = np.zeros(len(lengthscales))
+        #lml_h = np.zeros(len(lengthscales))
         lml_g = np.zeros(len(lengthscales))
         
         for i, ls in enumerate(lengthscales):
@@ -192,35 +192,35 @@ if __name__ == '__main__':
             rate_ls = shape_ls / ls
                               
             #HEATMAPBCC OBJECT
-            heatmapcombiner = HeatMapBCC(nx, ny, J, L, alpha0, np.unique(C_sample[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
-                          rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
-            heatmapcombiner.min_iterations = 4
-            heatmapcombiner.max_iterations = 200
-            heatmapcombiner.verbose = True
-            heatmapcombiner.conv_threshold = 1e-3
-            heatmapcombiner.uselowerbound = True
-                    
-            logging.info("Running HeatmapBCC... length scale = %f" % ls)
-               
-            heatmapcombiner.combine_classifications(C_sample)
-            results, _, _ = heatmapcombiner.predict(C_sample[:, 1], C_sample[:, 2], variance_method='sample')
-            results = results[1, :]
-                
-            lml_h[i] = heatmapcombiner.lowerbound()
+#             heatmapcombiner = HeatMapBCC(nx, ny, J, L, alpha0, np.unique(C_sample[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
+#                           rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+#             heatmapcombiner.min_iterations = 4
+#             heatmapcombiner.max_iterations = 200
+#             heatmapcombiner.verbose = True
+#             heatmapcombiner.conv_threshold = 1e-3
+#             heatmapcombiner.uselowerbound = True
+#                     
+#             logging.info("Running HeatmapBCC... length scale = %f" % ls)
+#                
+#             heatmapcombiner.combine_classifications(C_sample)
+#             results, _, _ = heatmapcombiner.predict(C_sample[:, 1], C_sample[:, 2], variance_method='sample')
+#             results = results[1, :]
+#                 
+#             lml_h[i] = heatmapcombiner.lowerbound()
         
-#             gpgrid = GPGrid(nx, ny, z0=z0, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=2.0, rate_ls=rate_ls)
-#             gpgrid.min_iter_VB = 5
-#             gpgrid.verbose = True
-#             gpgrid.max_iter_G = 10
-#             gpgrid.conv_threshold = 1e-5
-#             gpgrid.conv_check_freq = 1
-#             countsize = 1.0
-#             gpgrid.fit((C_sample[:, 1], C_sample[:, 2]), C_sample[:, 3] * countsize, totals=np.zeros((C_sample.shape[0], 1)) + countsize,
-#                        update_s = True)
-#             results, _ = gpgrid.predict((C_sample[:, 1], C_sample[:, 2]), variance_method='sample')
-#             results = results[:, 0]
-#             
-#             lml_g[i] = gpgrid.lowerbound()
+            gpgrid = GPClassifierVB(nx, ny, z0=z0, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=2.0, rate_ls=rate_ls)
+            gpgrid.min_iter_VB = 5
+            gpgrid.verbose = True
+            gpgrid.max_iter_G = 10
+            gpgrid.conv_threshold = 1e-5
+            gpgrid.conv_check_freq = 1
+            countsize = 1.0
+            gpgrid.fit((C_sample[:, 1], C_sample[:, 2]), C_sample[:, 3] * countsize, totals=np.zeros((C_sample.shape[0], 1)) + countsize,
+                       update_s = True)
+            results, _ = gpgrid.predict((C_sample[:, 1], C_sample[:, 2]), variance_method='sample')
+            results = results[:, 0]
+             
+            lml_g[i] = gpgrid.lowerbound()
              
             plt.figure()
             plt.title('Length scale %i' % ls)
@@ -228,7 +228,7 @@ if __name__ == '__main__':
             #cmap._init()
             plt.scatter(C_sample[:, 1], C_sample[:, 2], c=results)
             
-            print "LL = %.3f" % np.sum(C_sample[:, 3] * np.log(results) + (1-C_sample[:, 3]) * np.log(1 - results))
+#             print "LL = %.3f" % np.sum(C_sample[:, 3] * np.log(results) + (1-C_sample[:, 3]) * np.log(1 - results))
             
              
             #logging.debug("output scale: %.5f" % heatmapcombiner.heatGP[1].s)
@@ -248,12 +248,12 @@ if __name__ == '__main__':
         plt.legend(loc='best')
         plt.savefig("./lengthscale_prn_test_%s.png" % featurename)
         
-        plt.figure()
-        plt.title('Data')
-        #cmap = plt.get_cmap('jet')                
-        #cmap._init()
-        cols = np.array(['r', 'y'])
-        plt.scatter(C_sample[:, 1], C_sample[:, 2], c=cols[C_sample[:, 3]])
+#         plt.figure()
+#         plt.title('Data')
+#         #cmap = plt.get_cmap('jet')                
+#         #cmap._init()
+#         cols = np.array(['r', 'y'])
+#         plt.scatter(C_sample[:, 1], C_sample[:, 2], c=cols[C_sample[:, 3]])
         
         print "Optimal lengthscale for heatmapBCC: %f" % lengthscales[np.argmax(lml_h)]
         print "Optimal lengthscale for GP: %f" % lengthscales[np.argmax(lml_g)]
