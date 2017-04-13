@@ -147,7 +147,7 @@ def plot_density(nx, ny, x_all, y_all, f_all, title='ground truth density functi
     x_plot, y_plot = np.meshgrid(xi, yi)
     if apply_sigmoid:
         f_all = sigmoid(f_all)
-    z_plot = griddata(x_all.reshape(-1), y_all.reshape(-1), f_all.reshape(-1), xi, yi)
+    z_plot = griddata(x_all.reshape(-1), y_all.reshape(-1), f_all.reshape(-1), xi, yi, interp='linear')
 
     if not ax:
         fig = plt.figure()
@@ -155,7 +155,7 @@ def plot_density(nx, ny, x_all, y_all, f_all, title='ground truth density functi
     ax.plot_surface(x_plot, y_plot, z_plot, cmap="Spectral", rstride=1, cstride=1)
     #ax.set_zlim3d(0, 1)
     plt.title(title)
-
+    
 def plot_report_histogram(reportsx, reportsy, reports, ax=None):
     if not ax:
         fig = plt.figure()
