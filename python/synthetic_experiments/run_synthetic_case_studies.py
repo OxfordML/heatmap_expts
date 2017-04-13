@@ -57,7 +57,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.sparse import coo_matrix
 
-def plot_heatmap(nx, ny, x, y, t, title='density', transparency=0.0, fig=None):
+def plot_heatmap(nx, ny, x, y, t, title='density', transparency=0.0, fig=None, colorbar_on=True):
 
     cmap = plt.get_cmap('seismic')                
     cmap._init()

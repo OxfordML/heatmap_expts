@@ -2,6 +2,11 @@
 Tests using synthetic data to show that it is possible to learn the length-scale using HeatmapBCC, GPClassifierVB or 
 the SKLearn implementation.
 
+TODO: subtitles on plots 4 and 5
+TODO: remove colorbars on all but the last plot of 4 and 5
+TODO: why does the plot of f look wrong? Is the order of the predictions wrong?
+TODO: test with noisy reports
+
 Created on 6 Dec 2016
 
 @author: edwin
@@ -10,31 +15,27 @@ from heatmapbcc import HeatMapBCC
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
-
+import os
 import numpy as np
 from gp_classifier_vb import GPClassifierVB
 from scipy.stats import beta
 from sklearn.metrics import accuracy_score, roc_auc_score
 import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal as mvn, bernoulli
-import gen_synthetic
+#import gen_synthetic
+from run_synthetic_case_studies import plot_heatmap
 from sklearn.gaussian_process import GaussianProcessClassifier as GPC
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.model_selection import KFold
 
-theta0 = np.logspace(0, 8, 30)
-theta1 = np.logspace(-1, 1, 10)#29)
-#Theta0, Theta1 = np.meshgrid(theta0, theta1)
-
-lsrange = theta1#np.array([0.01, 0.1, 1, 10, 100])#np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) / float(10) * ls[0] * 2   
+lsrange = np.logspace(-1, 2, 20)#29)
 loglsrange = np.log10(lsrange)
 
 nx = 10
 ny = 10
 Nreports = 50
-Ntest = nx * ny
-ls = 3
+ls = 10
 ls = [ls, ls]
 output_scale = 3
 
@@ -111,16 +112,6 @@ def gen_synth_ground_truth(nx, ny, ls, output_scale=1):
     print t_all
 
     return N, x_all, y_all, f_all, t_all, rho_all
-
-def split_data(N, Ntest):
-    grididxs = np.arange(N)
-    # select random points in the grid to test
-    testidxs = np.random.choice(grididxs, Ntest, replace=False)
-    trainidxs = np.ones(N)
-    trainidxs[testidxs] = 0
-    trainidxs = np.argwhere(trainidxs).flatten()
-    
-    return trainidxs, testidxs
 
 def gen_synth_reports(N, Nreports, diags, off_diags, bias_vector, x_all, y_all, t_all, S=1):
 
@@ -260,46 +251,107 @@ def test_sklearn_gp(ls_i, train, test):
     preds = gpc.predict(testX)
     probs = gpc.predict_proba(testX)[:, 1]
         
-    # Specify Gaussian Processes with fixed and optimized hyperparameters
-    # gp_fix = GaussianProcessClassifier(kernel=1.0 * RBF(length_scale=1.0),
-    #                                    optimizer=None)
-    # gp_fix.fit(X[:train_size], y[:train_size])    
-    # gp_fix.log_marginal_likelihood(np.log([Theta0[i, j], Theta1[i, j]]))    
     return preds, probs, score, gpc.base_estimator_.f_cached
 
-if __name__ == '__main__':
-    experiment_name = '2D_toy'
-    N, x_all, y_all, f_all, t_all, rho_all = gen_synth_ground_truth(nx, ny, ls, output_scale)
+def plot_results(methodlabel, nmethods, methodidx, col, figures, lb_results, kf, chosen_f_train, chosen_rho_mean, 
+                 acc_results, roc_results): 
+    lb_results /= kf.n_splits
+     
+    p1 = plt.figure(figures[0].number)
+    plt.plot(loglsrange, lb_results, label=methodlabel, color=col)
+    plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', color=col)#,
+#                 label='%s, optimal length scale' % methodlabel, )
+    plt.xlabel('log_10(lengthscale)')
+    plt.ylabel('estimated ln(marginal likelihood)')
+    plt.title('Lower bound')
+    plt.legend(loc='best')
+     
+    p2 = plt.figure(figures[1].number)
+    plt.plot(loglsrange, acc_results, label=methodlabel, color=col)
+    plt.scatter(loglsrange[lsrange==chosen_ls], acc_results[lsrange==chosen_ls], marker='x', color=col)
+    plt.xlabel('log_10(lengthscale)')
+    plt.ylabel('accuracy')        
+    plt.title('Accuracy')
+    plt.legend(loc='best')
+    plt.ylim(-0.01, 1.01)
+     
+    p3 = plt.figure(figures[2].number)
+    plt.plot(loglsrange, roc_results, label=methodlabel, color=col)
+    plt.scatter(loglsrange[lsrange==chosen_ls], roc_results[lsrange==chosen_ls], marker='x', color=col)    
+    plt.title('ROC AUC')
+    plt.xlabel('log_10(lengthscale)')
+    plt.ylabel('ROC AUC')        
+    plt.legend(loc='best')
+    plt.ylim(-0.01, 1.01)
+     
+    p4 = plt.figure(figures[3].number)
+    plt.title(r'$\rho$') # needs an 'r' in front of string to treat as raw text so that \r is not an escape sequence
+    if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
+        ax = p4.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
+        #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=ax)
+        plot_heatmap(nx, ny, x_all, y_all, chosen_rho_mean, methodlabel, fig=ax, colorbar_on=False)
+    else:
+        plt.subplot(np.ceil(nmethods/2.0), 2, methodidx)
+        sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
+        plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='%s, ls=%.2f' % (methodlabel, chosen_ls),
+              color=col)
+    plt.xlabel('input coordinate')
+    plt.ylabel('p(+ve label)')        
+    plt.legend(loc='best')
+     
+    p5 = plt.figure(figures[4].number)
+    plt.title('f at the training points')   
+    if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
+        ax = p5.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
+        #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=ax)
+        plot_heatmap(nx, ny, x_all, y_all, chosen_f_train, methodlabel, fig=ax, colorbar_on=False)
+    else:
+        plt.subplot(np.ceil(nmethods/2.0), 2, methodidx)        
+        plt.plot(xreports, chosen_f_train, label='%s, ls=%.2f' % (methodlabel, chosen_ls), color=col)
+    plt.xlabel('input coordinate')
+     
+    plt.legend(loc='best')
     
-#     # create a very simple dataset where X values larger than 2.5 have positive y values, those lower than 2.5 have 0s
+    return p1, p2, p3, p4, p5
+
+if __name__ == '__main__':
+    # select one of these experiment names to generate appropriate data
+    experiment_name = '2D_toy'
 #     experiment_name = 'one_changepoint'
-#     nx = 100
-#     ny = 1
-#     N = nx
-#     rng = np.random.RandomState(0)
-#     x_all = rng.uniform(0, 5, nx)
-#     y_all = np.zeros(nx)
-#     f_all = np.array(X > 2.5, dtype=int)
-#     # now introduce a little noise    
-#     rho_all = sigmoid((f_all - 0.5)*2)
-#     t_all = bernoulli.rvs(rho_all)
-         
-# reuse the ground truth from 2D toy
 # experiment_name = '2D_toy_noisyworkers'
-#     C, reporter_ids, reports, pi, xreports, yreports, dataidxreports = gen_synth_reports(
-#                                     N, Nreports, diags, off_diags, biases, x_all, y_all, t_all, S)
 
-    dataidxreports = np.argsort(np.argsort(x_all))[:, np.newaxis]
-    xreports = x_all[:, np.newaxis]#[dataidxreports]
-    yreports = y_all[:, np.newaxis]#[dataidxreports]
-    reports = t_all[:, np.newaxis]#[dataidxreports]
-    Nreports = len(xreports)
+    # Generate the ground truth first
+    if experiment_name == '2D_toy' or experiment_name == '2D_toy_noisyworkers':    
+        N, x_all, y_all, f_all, t_all, rho_all = gen_synth_ground_truth(nx, ny, ls, output_scale)
+    elif experiment_name == 'one_changepoint':
+        # create a very simple dataset where X values larger than 2.5 have positive y values, those lower than 2.5 have 0s
+        nx = 100
+        ny = 1
+        N = nx
+        rng = np.random.RandomState(0)
+        x_all = rng.uniform(0, 5, nx)
+        y_all = np.zeros(nx)
+        f_all = np.array(x_all > 2.5, dtype=int)
+        # now introduce a little noise    
+        rho_all = sigmoid((f_all - 0.5)*2)
+        t_all = bernoulli.rvs(rho_all)
+         
+    # generate the reports
+    if experiment_name == '2D_toy_noisyworkers':
+        C, _, reports, _, xreports, yreports, dataidxreports = gen_synth_reports(N, Nreports, diags, 
+                                                                            off_diags, biases, x_all, y_all, t_all, S)
+    else: # otherwise assume we have one perfect trainer
+        dataidxreports = np.argsort(np.argsort(x_all))[:, np.newaxis]
+        xreports = x_all[:, np.newaxis]#[dataidxreports]
+        yreports = y_all[:, np.newaxis]#[dataidxreports]
+        reports = t_all[:, np.newaxis]#[dataidxreports]
+        Nreports = len(xreports)
 
-    sortidxs = np.argsort(dataidxreports.flatten())
-    dataidxreports = dataidxreports[sortidxs]
-    xreports = xreports[sortidxs]
-    yreports = yreports[sortidxs]
-    reports = reports[sortidxs]
+        sortidxs = np.argsort(dataidxreports.flatten())
+        dataidxreports = dataidxreports[sortidxs]
+        xreports = xreports[sortidxs]
+        yreports = yreports[sortidxs]
+        reports = reports[sortidxs]
 
     dataidxs = np.arange(N)
     
@@ -311,6 +363,7 @@ if __name__ == '__main__':
     p3 = plt.figure()
     p4 = plt.figure()
     p5 = plt.figure()
+    figures = [p1, p2, p3, p4, p5]
     
 # GPVB ----------------------------------------------------------------------------------------------------------------
     if 'gbvb' in methods:
@@ -346,48 +399,10 @@ if __name__ == '__main__':
                 
             #print "Cross entropy between densities: %.2f" % nlpd_results[i]
             print "Accuracy: %.2f" % acc_results[i] 
-    
-        lb_results /= kf.n_splits
-        dll_results /= kf.n_splits  
-    
-        plt.figure(p1.number)
-        plt.plot(loglsrange, lb_results, label='GPC VB', color='b')
-        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', label='GPC VB optimal length scale', color='b')
-        plt.title('Lower bound')
-        
-        p2 = plt.figure(p2.number)
-        plt.plot(loglsrange, acc_results, label='GPC VB', color='b')
-        plt.title('Accuracy')
-        
-        p3 = plt.figure(p3.number)
-        plt.plot(loglsrange, roc_results, label='GPC VB', color='b')
-        plt.title('ROC AUC')
-        
-        p4 = plt.figure(p4.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=plt.gca(projection='3d'))
-        else:
-            sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-            plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, ls=%.2f' % chosen_ls, color='b')
-        plt.title('$\rho$')
-    
-    #     plt.scatter(x_all, chosen_t_pred, color='b', marker='o')
-        
-        p5 = plt.figure(p5.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=plt.gca(projection='3d'))
-        else:        
-            plt.plot(xreports, chosen_f_train, label='GPC VB, ls=%.2f' % chosen_ls, color='b')
-        plt.title('f at the training points')
+         
+        p1, p2, p3, p4, p5 = plot_results('GPC VB', len(methods) + 1, 4, 'b', figures, lb_results, kf, chosen_f_train, chosen_rho_mean, 
+                                          acc_results, roc_results)        
             
-    #     p1 = plt.figure(p1.number)
-    #     plt.plot(loglsrange, dll_results, label='GPC VB DLL', color='b', linestyle='dashed')
-    #     plt.title('Lower bound')
-            
-        #plt.figure()
-        #plt.plot(lsrange, nlpd_results)
-        #plt.title('NLPD')
-        
 # GPVB with analytical approximation -----------------------------------------------------------------------------------
     if 'gpvbanal' in methods: #use analytical 'rough' approximation instead of sampling to estimate output expected value
         
@@ -422,55 +437,11 @@ if __name__ == '__main__':
             roc_results[i] = roc_auc_score(t_all, rho_mean)
                 
             #print "Cross entropy between densities: %.2f" % nlpd_results[i]
-            print "Accuracy: %.2f" % acc_results[i]     
+            print "Accuracy: %.2f" % acc_results[i]
+                 
+        p1, p2, p3, p4, p5 = plot_results('GPC VB, analytical pred.', len(methods) + 1, 5, 'y', figures, lb_results, kf, chosen_f_train, 
+                                          chosen_rho_mean, acc_results, roc_results)   
         
-        lb_results /= kf.n_splits
-        dll_results /= kf.n_splits  
-        
-        p1 = plt.figure(p1.number)
-        plt.plot(loglsrange, lb_results, label='GPC VB, analytical pred.', color='g')
-        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-                    label='GPC VB, analytical pred., optimal length scale', color='g')    
-        plt.title('Lower bound')
-        plt.legend(loc='best')
-        
-        p2 = plt.figure(p2.number)
-        plt.plot(loglsrange, acc_results, label='GPC VB, analytical pred.', color='g')
-        plt.title('Accuracy')
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-        
-        p3 = plt.figure(p3.number)
-        plt.plot(loglsrange, roc_results, label='GPC VB, analytical pred.', color='g')
-        plt.title('ROC AUC')
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-        
-        p4 = plt.figure(p4.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=plt.gca(projection='3d'))
-        else:
-            sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-            plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC VB, analytical pred., ls=%.2f' % chosen_ls,
-                  color='g')
-        plt.title('$\rho$')
-        plt.legend(loc='best')
-        
-    #     plt.scatter(x_all, chosen_t_pred, color='g', marker='x')
-    #     plt.scatter(x_all, t_all, color='black', marker='*')
-        
-        p5 = plt.figure(p5.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=plt.gca(projection='3d'))
-        else:        
-            plt.plot(xreports, chosen_f_train, label='GPC VB, analytical pred., ls=%.2f' % chosen_ls, color='g')
-        plt.title('f at the training points')    
-        plt.legend(loc='best')    
-        
-    #     p1 = plt.figure(p1.number)
-    #     plt.plot(loglsrange, dll_results, label='GPC VB, analytical pred., DLL', color='g', linestyle='dashed')
-    #     plt.title('Lower bound')    
-    
 # HeatmapBCC -----------------------------------------------------------------------------------------------------------
     if 'heatmapbcc' in methods:
      
@@ -506,59 +477,9 @@ if __name__ == '__main__':
             #print "Cross entropy between densities: %.2f" % nlpd_results[i]
             print "Accuracy: %.2f" % acc_results[i]     
          
-        lb_results /= kf.n_splits
-        dll_results /= kf.n_splits  
+        p1, p2, p3, p4, p5 = plot_results('HeatmapBCC VB', len(methods) + 1, 2, 'g', figures, lb_results, kf, 
+                                          chosen_f_train, chosen_rho_mean, acc_results, roc_results)
          
-        p1 = plt.figure(p1.number)
-        plt.plot(loglsrange, lb_results, label='HeatmapBCC VB', color='k')
-        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-                    label='HeatmapBCC VB, optimal length scale', color='k')
-        plt.xlabel('log_10(lengthscale)')
-        plt.ylabel('estimated ln(marginal likelihood)')
-        plt.title('Lower bound')
-        plt.legend(loc='best')
-         
-        p2 = plt.figure(p2.number)
-        plt.plot(loglsrange, acc_results, label='HeatmapBCC VB', color='k')
-        plt.xlabel('log_10(lengthscale)')
-        plt.ylabel('accuracy')        
-        plt.title('Accuracy')
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-         
-        p3 = plt.figure(p3.number)
-        plt.plot(loglsrange, roc_results, label='HeatmapBCC VB', color='k')
-        plt.title('ROC AUC')
-        plt.xlabel('log_10(lengthscale)')
-        plt.ylabel('ROC AUC')        
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-         
-        p4 = plt.figure(p4.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=plt.gca(projection='3d'))
-        else:
-            sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-            plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='HeatmapBCC VB, ls=%.2f' % chosen_ls,
-                  color='k')
-        plt.xlabel('input coordinate')
-        plt.ylabel('p(+ve label)')        
-        plt.title('$\rho$')
-        plt.legend(loc='best')
-         
-        p5 = plt.figure(p5.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=plt.gca(projection='3d'))
-        else:        
-            plt.plot(xreports, chosen_f_train, label='HeatmapBCC VB, ls=%.2f' % chosen_ls, color='k')
-        plt.xlabel('input coordinate')
-        plt.title('f at the training points')    
-        plt.legend(loc='best')    
-         
-    #     p1 = plt.figure(p1.number)
-    #     plt.plot(loglsrange, dll_results, label='HeatmapBCC VB, analytical pred., DLL', color='g', linestyle='dashed')
-    #     plt.title('Lower bound')     
-    
 # GP Laplace -----------------------------------------------------------------------------------------------------------
     if 'gplaplace' in methods:
         
@@ -592,56 +513,41 @@ if __name__ == '__main__':
             #print "Cross entropy between densities: %.2f" % nlpd_results[i]
             print "Accuracy: %.2f" % acc_results[i] 
     
-        lb_results /= kf.n_splits
-    
-        p1 = plt.figure(p1.number)
-        plt.plot(loglsrange, lb_results, label='GPC Laplace', color='r')
-        plt.scatter(loglsrange[lsrange==chosen_ls], lb_results[lsrange==chosen_ls], marker='x', 
-                    label='GPC Laplace optimal length scale', color='r')    
-        plt.title('Lower bound')
-        plt.legend(loc='best')
-        
-        p2 = plt.figure(p2.number)
-        plt.plot(loglsrange, acc_results, label='GPC Laplace', color='r')
-        plt.title('Accuracy')
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-        
-        p3 = plt.figure(p3.number)
-        plt.plot(loglsrange, roc_results, label='GPC Laplace', color='r')
-        plt.title('ROC AUC')
-        plt.legend(loc='best')
-        plt.ylim(-0.01, 1.01)
-        
-        p4 = plt.figure(p4.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=plt.gca(projection='3d'))
-        else:
-            sorteddataidxs = np.argsort(x_all)[:, np.newaxis]
-            plt.plot(x_all[sorteddataidxs], chosen_rho_mean[sorteddataidxs], label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
-        plt.title('$\rho$')
-        plt.legend(loc='best')
-        
-    #     plt.scatter(x_all, chosen_t_pred, color='r', marker='x')
-       
-        p5 = plt.figure(p5.number)
-        if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-            gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=plt.gca(projection='3d'))
-        else:        
-            plt.plot(xreports, chosen_f_train, label='GPC Laplace, ls=%.2f' % chosen_ls, color='r')
-        plt.title('f at the training points')    
-        plt.legend(loc='best')
+        p1, p2, p3, p4, p5 = plot_results('GPC Laplace', len(methods) + 1, 3, 'r', figures, lb_results, kf, chosen_f_train, chosen_rho_mean, 
+                                          acc_results, roc_results)
+
 
     #ground truth
     plt.figure(p4.number)
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
-        plt.scatter(x_all[t_all==1], y_all[t_all==1], color='black', marker='x', label='ground truth -- positive values')
-        plt.scatter(x_all[t_all==0], y_all[t_all==0], color='black', marker='o', label='ground truth -- negative values')
+        ax = p4.add_subplot(np.ceil((len(methods)+1)/2.0), 2, 1)
+        plot_heatmap(nx, ny, x_all, y_all, t_all, 'ground truth class labels', fig=ax)
+
+#         ax.scatter(x_all[t_all==1], y_all[t_all==1], np.ones(np.sum(t_all==1)), color='black', marker='x', 
+#                     label='ground truth -- positive values')
+#         ax.scatter(x_all[t_all==0], y_all[t_all==0], np.zeros(np.sum(t_all==0)), color='black', marker='o', 
+#                     label='ground truth -- negative values')
     else:
+        plt.subplot(np.ceil((len(methods)+1)/2.0), 2, 1)
         plt.scatter(x_all, t_all, color='black', marker='*', label='ground truth')
+        
+    plt.legend(loc='best')
+            
+    p5 = plt.figure(p5.number)
+    if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
+        ax = p5.add_subplot(np.ceil((len(methods)+1)/2.0), 2, 1)
+        #gen_synthetic.plot_density(nx, ny, x_all, y_all, f_all, ax=ax)
+        plot_heatmap(nx, ny, x_all, y_all, f_all, 'ground truth latent f', fig=ax)
+    else:        
+        plt.subplot(np.ceil((len(methods)+1)/2.0), 2, 1)        
+        plt.plot(x_all, f_all, label='ground truth latent function', color='k')        
+        
     plt.legend(loc='best')
     
-    outputpath = './output/lengthscale_plots/%s/%s' % experiment_name
+    outputpath = './output/lengthscale_plots/%s' % experiment_name
+    if not os.path.isdir(outputpath):
+        os.mkdir(outputpath)
+    outputpath += '/%s'
     plt.figure(p1.number)
     plt.savefig(outputpath % 'lowerbound.eps')
     plt.figure(p2.number)
