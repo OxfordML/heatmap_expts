@@ -35,8 +35,11 @@ from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
 from ibcc import IBCC
 from gp_classifier_vb import GPClassifierVB
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, coo
 from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn, beta
+from sklearn.neighbors.unsupervised import NearestNeighbors
+from sklearn.neighbors.classification import KNeighborsClassifier
+from sklearn import svm
 
 class Tester(object):
         
@@ -266,6 +269,67 @@ class Tester(object):
             # Report coords for this round
             reportsx = C[:, 1]
             reportsy = C[:, 2]
+            
+# SIMPLE BASELINES ------------------------------------------------------------------------------------------------
+
+            if 'MV' in self.methods:
+                posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
+                neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))                
+                
+                poscounts = coo_matrix((np.ones(posinputdata.shape[1], dtype=float), (posinputdata[0,:], posinputdata[1,:]))).tocsr()
+                negcounts = coo_matrix((np.ones(neginputdata.shape[1], dtype=float), (neginputdata[0,:], neginputdata[1,:]))).tocsr()
+                totals = poscounts + negcounts
+                
+                fraction_pos = poscounts[reportsx, reportsy] / totals[reportsx, reportsy]
+                
+                tr_idxs = [np.argwhere((reportsx==targetsx[i]) & (reportsy==targetsy[i]))[0][0] if 
+                           (reportsx==targetsx[i]) & (reportsy==targetsy[i]) else -1 for i in range(len(targetsx))] 
+                targets_single_arr = np.concatenate(( targetsx.reshape(1, len(targetsx)),
+                                                      targetsy.reshape(1, len(targetsy)) ))
+
+                densityresults['MV'] = [fraction_pos[i] if i > -1 else 0.5 for i in tr_idxs]
+                results['MV'] = int(np.round(densityresults['MV']))
+                density_var['MV'] = np.zeros(len(results['MV']))
+                
+                logging.info("MV complete.")                
+
+            if 'oneclassSVM' in self.methods:
+                posinputdata  = np.hstack((reportsx[posreports>0], reportsy[posreports>0]))
+                svm = svm.OneClassSVM()
+                
+                svm.fit(posinputdata, np.ones(posinputdata.shape[0]))
+                
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+
+                results['SVM'] = svm.predict(targets_single_arr)
+                densityresults['SVM'] = svm.decision_function(targets_single_arr) # confidence scores not probabilities
+                density_var['SVM'] = np.zeros(len(results['SVM']))
+                
+                logging.info("SVM complete.") 
+
+            if 'SVM' in self.methods:
+                svm = svm.SVC(probability=False)
+                svm.fit(C[:, 1:3], posreports)
+                
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+
+                results['SVM'] = svm.predict(targets_single_arr)
+                densityresults['SVM'] = svm.decision_function(targets_single_arr) # confidence scores not probabilities
+                density_var['SVM'] = np.zeros(len(results['SVM']))
+                
+                logging.info("SVM complete.") 
+                                
+            if 'NN' in self.methods:
+                nn_classifier = KNeighborsClassifier()
+                nn_classifier.fit(C[:, 1:3], posreports)
+                
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+
+                results['NN'] = nn_classifier.predict(targets_single_arr)
+                densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)
+                density_var['NN'] = np.zeros(len(results['NN']))
+                
+                logging.info("NN complete.")                
     
 # KERNEL DENSITY ESTIMATION ---------------------------------------------------------------------------------------
             if 'KDE' in self.methods:
@@ -350,8 +414,8 @@ class Tester(object):
                 gpgrid_opt = None
                 for l, ls in enumerate(ls_initial):
                     rate_ls = 2.0 / ls
-                    self.gpgrid = GPGrid(nx, ny, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, shape_ls=2.0, 
-                                         rate_ls=rate_ls)
+                    self.gpgrid = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
+                                                 shape_ls=2.0, rate_ls=rate_ls)
                     self.gpgrid.verbose = self.verbose
 #                     self.gpgrid.p_rep = 0.9
                     
@@ -410,7 +474,7 @@ class Tester(object):
                     rate_ls = shape_ls / ls_initial
                     
                     # run standard IBCC
-                    self.gpgrid2 = GPGrid(opt_nx, opt_ny, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
+                    self.gpgrid2 = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
                                            shape_ls=shape_ls, rate_ls=rate_ls)
                     self.gpgrid2.verbose = self.verbose
                     self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)                

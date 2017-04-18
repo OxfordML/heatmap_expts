@@ -43,8 +43,11 @@ PLOT_SYNTH_DATA = False
 SAVE_RESULTS = True
 
 methods = [
+           'MV',
+           'NN',
+           'SVM',
            'KDE',
-           #'IBCC',
+           'IBCC',
            'GP',
            'IBCC+GP',
            'HeatmapBCC'
@@ -379,23 +382,23 @@ def run_experiments(expt_label_template, dstart=0, dend=nruns, p_idx_start=0, p_
                     continue
 
                 diags = np.ones(S)
-                diags[:S * p] = diag_reliable
-                diags[S * p:] = diag_weak
+                diags[:int(S * p)] = diag_reliable
+                diags[int(S * p):] = diag_weak
                 off_diags = np.ones(S)
-                off_diags[:S * p] = off_diag_reliable
-                off_diags[S * p:] = off_diag_weak
+                off_diags[:int(S * p)] = off_diag_reliable
+                off_diags[int(S * p):] = off_diag_weak
                 biases = np.ones((S, J))
-                biases[:S * p, :] = bias_reliable
-                biases[S * p:, :] = bias_weak
+                biases[:int(S * p), :] = bias_reliable
+                biases[int(S * p):, :] = bias_weak
 
                 dataset_label = "d%i" % d
                 logging.info("Generating data/reloading old data for proportion %i, Dataset %d" % (p_idx, d))
                 # only reset on the first iteration
                 xreports, yreports, t_gold = gen_synth_ground_truth(RESET_ALL_DATA & (p_idx==0), nx, ny, Nreports,
-                    Ntest, ls, snap_to_grid, experiment_label, dataset_label, 1, 0)#5, cluster_spread * nx / Nreports**0.5)
+                    Ntest, ls, snap_to_grid, experiment_label, dataset_label, 1, 0, outputscale_new=output_scale)#5, cluster_spread * nx / Nreports**0.5)
                 dataset_label = "p%f_d%i" % (p, d)
                 gen_synth_reports(RESET_ALL_DATA, Nreports, diags, off_diags, biases, xreports, yreports, t_gold,
-                                  snap_to_grid, experiment_label, dataset_label)
+                                  snap_to_grid, experiment_label, dataset_label, S)
 
         # RUN TESTS -----------------------------------------------------------------------------------------------------------
         for p_idx, p in enumerate(weak_proportions):
@@ -406,11 +409,11 @@ def run_experiments(expt_label_template, dstart=0, dend=nruns, p_idx_start=0, p_
                 continue
 
             diags = np.ones(S)
-            diags[:S * p] = diag_reliable
-            diags[S * p:] = diag_weak
+            diags[:int(S * p)] = diag_reliable
+            diags[int(S * p):] = diag_weak
             off_diags = np.ones(S)
-            off_diags[:S*p] = off_diag_reliable
-            off_diags[S*p:] = off_diag_weak
+            off_diags[:int(S * p)] = off_diag_reliable
+            off_diags[int(S * p):] = off_diag_weak
 
             for d in range(dstart, dend):
                 dataset_label = "d%i" % d

@@ -10,12 +10,6 @@ Experiment 2b: Possible alternative view to plot. Keep a fixed sparseness, but d
 
 """
 
-import sys
-from gen_synthetic import dataset_location
-
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
-
 import numpy as np
 import gen_synthetic as gs
 
