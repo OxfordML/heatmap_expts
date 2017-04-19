@@ -109,14 +109,13 @@ rate_s0 = 1
 alpha0_offdiag = 1
 alpha0_diag = 2
 
-# Flag indicates whether we should snap report locations to their nearest grid location.
+# See run_experiments: snap-to-grid flag indicates whether we should snap report locations to their nearest grid location.
 # Doing so means that we assume reports relate to the whole grid square, and that different sources relate to the same
 # t object. We could reduce problems with this discretization step if we use soft snapping based on distance.
 # When set to true, the model predicts the state of each grid location, and the latent density of states. Lots of
 # reports at same place does not necessarily imply high density, which makes sense if there is only a single emergency.
 # When set to false, the model predicts the density of reports at each location, if the reports were accurate,
 # and assumes that reports may relate to different events at the same location.
-snap_to_grid = False
 
 # DATA GENERATION --------------------------------------------------------------------------------------------------
 
@@ -367,9 +366,9 @@ off_diag_weak = 5.0
 bias_weak = np.zeros(J)
 
 # MAIN SET OF SYNTHETIC DATA EXPERIMENTS ------------------------------------------------------------------------------
-def run_experiments(expt_label_template, dstart=0, dend=nruns, p_idx_start=0, p_idx_end=nproportions):
+def run_experiments(expt_label_template, dstart=0, dend=nruns, p_idx_start=0, p_idx_end=nproportions, snap_to_grid=False):
     print "Output scale for ground truth: " + str(output_scale)
-
+    
     for cluster_spread in cluster_spreads:
 
         experiment_label = expt_label_template % cluster_spread

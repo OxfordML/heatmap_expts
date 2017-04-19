@@ -13,11 +13,6 @@ total number of labels though).
 
 """
 
-import sys
-
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
-
 import numpy as np
 import gen_synthetic as gs
 
@@ -46,4 +41,4 @@ bias_weak = np.zeros(gs.J)
 expt_label_template = 'synth/output_cluslocs%.2f_noise_free5'
 
 if __name__ == '__main__':
-    gs.run_experiments(expt_label_template)#, 8, gs.nruns, 2, gs.nproportions)
+    gs.run_experiments(expt_label_template, snap_to_grid=False)#, 8, gs.nruns, 2, gs.nproportions)
