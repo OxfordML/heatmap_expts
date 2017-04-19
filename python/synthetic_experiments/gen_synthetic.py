@@ -46,6 +46,7 @@ methods = [
            'MV',
            'NN',
            'SVM',
+           'oneclassSVM',
            'KDE',
            'IBCC',
            'GP',
@@ -76,7 +77,7 @@ z0 = nu0[1] / np.sum(nu0)
 # just make different plots!
 
 # Number of datasets
-nruns = 2#25
+nruns = 25
 nsteps = 11
 
 # REPORTS
