@@ -103,28 +103,37 @@ class Tester(object):
         
         self.ignore_report_point_density = False
     
-    def evaluate_discrete(self, results, Nlabels, gold_labels, gold_density):
+    def evaluate_discrete(self, results, densityresults, Nlabels, gold_labels, gold_density):
         evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
         
         for method in results:
             print ''
             print 'Results for %s with %i labels' % (method, Nlabels)
             
-            pred = results[method]
+            # scores given to each data point indicating strength of class membership -- may not always be probabilities
+            pred_scores = results[method] 
+            
+            # some metrics require probabilities...
+            if 'SVM' in method:
+                pred_probs = densityresults[method]
+            else:
+                pred_probs = pred_scores
             
             best_thresholds = []
-            testresults = pred.flatten()
+            testresults = pred_probs.flatten()
             testresults[testresults==0] = 0.000001 # use a very small value to avoid log errors with cross entropy
             testresults[testresults==1] = 0.999999
 
             pos_percent = (np.sum(testresults >= 0.5) / float(len(testresults)))
             neg_percent = (np.sum(testresults < 0.5) / float(len(testresults)))
 
+            testresults_scores = pred_scores.flatten()[gold_labels>=0]
             testresults = testresults[gold_labels>=0]
             gold_labels_i = gold_labels[gold_labels>=0]
             gold_density_i = gold_density[gold_density>=0]
 
             #Use only confident labels -- useful for e.g. PRN
+            testresults_scores = testresults_scores[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
             testresults = testresults[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
             gold_labels_i = gold_labels_i[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
 
@@ -137,7 +146,7 @@ class Tester(object):
 
             discrete_gold = np.round(gold_labels_i)
 
-            auc_by_class, _, _ = evaluator.eval_auc(testresults, discrete_gold)
+            auc_by_class, _, _ = evaluator.eval_auc(testresults_scores, discrete_gold)
             if testresults.ndim == 2:
                 auc = np.sum(np.bincount(discrete_gold) * auc_by_class) / len(discrete_gold)
             else:
@@ -251,6 +260,9 @@ class Tester(object):
     
     def run_tests(self, C_all, nx, ny, targetsx, targetsy, gold_labels, gold_density, Nlabels, Nrep_inc):
 
+        nx = int(nx)
+        ny = int(ny)
+
         C = C_all
     
         while Nlabels <= self.Nlabels_all:
@@ -283,45 +295,49 @@ class Tester(object):
                 posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
                 neginputdata = np.vstack((reportsx[negreports>0], reportsy[negreports>0]))                
                 
-                poscounts = coo_matrix((np.ones(posinputdata.shape[1], dtype=float), (posinputdata[0,:], posinputdata[1,:]))).tocsr()
-                negcounts = coo_matrix((np.ones(neginputdata.shape[1], dtype=float), (neginputdata[0,:], neginputdata[1,:]))).tocsr()
+                poscounts = coo_matrix((np.ones(posinputdata.shape[1], dtype=float), 
+                                        (posinputdata[0,:], posinputdata[1,:])), 
+                                       shape=(nx, ny)).tocsr()
+                negcounts = coo_matrix((np.ones(neginputdata.shape[1], dtype=float), 
+                                        (neginputdata[0,:], neginputdata[1,:])), 
+                                       shape=(nx, ny)).tocsr()
                 totals = poscounts + negcounts
                 
                 fraction_pos = poscounts[reportsx, reportsy] / totals[reportsx, reportsy]
                 
                 tr_idxs = [np.argwhere((reportsx==targetsx[i]) & (reportsy==targetsy[i]))[0][0] if 
-                           (reportsx==targetsx[i]) & (reportsy==targetsy[i]) else -1 for i in range(len(targetsx))] 
+                           np.any((reportsx==targetsx[i]) & (reportsy==targetsy[i])) else -1 for i in range(len(targetsx))]
                 targets_single_arr = np.concatenate(( targetsx.reshape(1, len(targetsx)),
                                                       targetsy.reshape(1, len(targetsy)) ))
 
-                densityresults['MV'] = [fraction_pos[i] if i > -1 else 0.5 for i in tr_idxs]
-                results['MV'] = int(np.round(densityresults['MV']))
+                densityresults['MV'] = np.array([fraction_pos[i] if i > -1 else 0.5 for i in tr_idxs])
+                results['MV'] = np.round(densityresults['MV'])
                 density_var['MV'] = np.zeros(len(results['MV']))
                 
                 logging.info("MV complete.")                
 
             if 'oneclassSVM' in self.methods:
                 posinputdata  = np.hstack((reportsx[posreports>0], reportsy[posreports>0]))
-                svm = svm.OneClassSVM()
+                svc = svm.OneClassSVM()
                 
-                svm.fit(posinputdata, np.ones(posinputdata.shape[0]))
+                svc.fit(posinputdata, np.ones(posinputdata.shape[0]))
                 
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
-                results['SVM'] = svm.predict(targets_single_arr)
-                densityresults['SVM'] = svm.decision_function(targets_single_arr) # confidence scores not probabilities
-                density_var['SVM'] = np.zeros(len(results['SVM']))
+                results['1-class SVM'] = svc.decision_function(targets_single_arr) # confidence scores not probabilities
+                densityresults['1-class SVM'] = svc.predict(targets_single_arr) # need values between 0 and 1 for this. no probabilities available, so only have discrete
+                density_var['1-class SVM'] = np.zeros(len(results['1-class SVM']))
                 
                 logging.info("SVM complete.") 
 
             if 'SVM' in self.methods:
-                svm = svm.SVC(probability=False)
-                svm.fit(C[:, 1:3], posreports)
+                svc = svm.SVC(probability=True)
+                svc.fit(C[:, 1:3], posreports)
                 
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
-                results['SVM'] = svm.predict(targets_single_arr)
-                densityresults['SVM'] = svm.decision_function(targets_single_arr) # confidence scores not probabilities
+                results['SVM'] = svc.decision_function(targets_single_arr)
+                densityresults['SVM'] = svc.predict_proba(targets_single_arr)[:, 1] # confidence scores not probabilities
                 density_var['SVM'] = np.zeros(len(results['SVM']))
                 
                 logging.info("SVM complete.") 
@@ -333,7 +349,7 @@ class Tester(object):
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['NN'] = nn_classifier.predict(targets_single_arr)
-                densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)
+                densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)[:, 1]
                 density_var['NN'] = np.zeros(len(results['NN']))
                 
                 logging.info("NN complete.")                
@@ -692,7 +708,7 @@ class Tester(object):
     
 # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             if np.any(gold_labels):
-                self.evaluate_discrete(results, Nlabels, gold_labels, gold_density)
+                self.evaluate_discrete(results, densityresults, Nlabels, gold_labels, gold_density)
 
             if np.any(gold_density):
                 self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)
@@ -724,7 +740,7 @@ class Tester(object):
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             if np.any(gold_labels):
-                self.evaluate_discrete(results, Nlabels, gold_labels, gold_density)
+                self.evaluate_discrete(results, densityresults, Nlabels, gold_labels, gold_density)
 
             if np.any(gold_density):
                 self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)

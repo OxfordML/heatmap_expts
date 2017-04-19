@@ -47,4 +47,4 @@ bias_weak = np.zeros(gs.J)
 expt_label_template = 'synth/output_cluslocs%.2f_noise_free5'
 
 if __name__ == '__main__':
-    gs.run_experiments(expt_label_template, 8, gs.nruns, 2, gs.nproportions)
+    gs.run_experiments(expt_label_template)#, 8, gs.nruns, 2, gs.nproportions)

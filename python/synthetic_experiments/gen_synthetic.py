@@ -76,7 +76,7 @@ z0 = nu0[1] / np.sum(nu0)
 # just make different plots!
 
 # Number of datasets
-nruns = 25
+nruns = 2#25
 nsteps = 11
 
 # REPORTS
