@@ -282,8 +282,8 @@ class Tester(object):
             density_var = {}
     
             # indicator array to show whether reports are positive or negative
-            posreports = C[:, 3].astype(float) #(C[:, 3] == 1).astype(float)
-            negreports = 1.0 - C[:, 3] #(C[:, 3] == 0).astype(float)
+            posreports = (C[:, 3] >= 1).astype(float)
+            negreports = (C[:, 3] == 0).astype(float)
     
             # Report coords for this round
             reportsx = C[:, 1]
@@ -320,7 +320,7 @@ class Tester(object):
                 posinputdata  = np.hstack((reportsx[posreports>0], reportsy[posreports>0]))
                 svc = svm.OneClassSVM()
                 
-                svc.fit(posinputdata, np.ones(posinputdata.shape[0]))
+                svc.fit(posinputdata.flatten())
                 
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
@@ -362,28 +362,18 @@ class Tester(object):
                 logging.info("Running KDE... pos data size: %i, neg data size: %i " % (posinputdata.shape[1], neginputdata.shape[1]) )
                 if posinputdata.shape[1] != 0:
                     try:
-                        #if self.optimise:
                         kdepos = gaussian_kde(posinputdata, 'scott')
-                        #else:   
-                        #    kdepos = gaussian_kde(posinputdata, self.ls_initial)
                     except:
                         logging.error("Couldn't run KDE")
                         kdepos = []
                 
                 if neginputdata.shape[1] != 0:
                     try:
-                        #if self.optimise:
                         kdeneg = gaussian_kde(neginputdata, 'scott')
-                        #else:
-                        #    kdeneg = gaussian_kde(neginputdata, self.ls_initial)
                     except:
                         logging.error("Couldn't run KDE")
                         kdeneg = []
                     
-                #else: # Treat the points with no observation as negatives
-                    # no_obs_coords = np.argwhere(obs_grid.toarray()==0)
-                    # neginputdata = np.vstack((no_obs_coords[:,0], no_obs_coords[:,1]))
-    
                 def logit(a):
                     a[a==1] = 1 - 1e-6
                     a[a==0] = 1e-6
@@ -428,25 +418,24 @@ class Tester(object):
                     lpls_data = np.zeros(len(ls_initial))
                     gp_preds = np.zeros((len(ls_initial), len(targetsx))) 
                     gp_var = np.zeros((len(ls_initial), len(targetsx)))
-                elif not np.any(self.ls_initial) and self.optimise:
-                    ls_initial = [2, 10, 50, 100]
                 else:
-                    ls_initial = [self.ls_initial]
+                    ls_initial = np.array([self.ls_initial]).flatten()
                     
                 nlml = np.inf
                 gpgrid_opt = None
                 for l, ls in enumerate(ls_initial):
                     rate_ls = 2.0 / ls
                     self.gpgrid = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
-                                                 shape_ls=2.0, rate_ls=rate_ls)
+                                                 shape_ls=2.0, rate_ls=rate_ls, ls_initial=[ls])
                     self.gpgrid.verbose = self.verbose
 #                     self.gpgrid.p_rep = 0.9
                     
                     if self.optimise:                    
-                        self.gpgrid.optimize([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
-                                                       (posreports+negreports)[:,np.newaxis]), axis=1), maxfun=100)
-                        if self.gpgrid.nlml < nlml:
-                            nlml = self.gpgrid.nlml
+                        _, current_nlml = self.gpgrid.fit([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
+                                           (posreports+negreports)[:,np.newaxis]), axis=1), 
+                                        optimize=True, maxfun=100)
+                        if current_nlml < nlml:
+                            nlml = current_nlml
                             gpgrid_opt = self.gpgrid       
                     else:
                         self.gpgrid.fit([reportsx, reportsy], np.concatenate((posreports[:,np.newaxis], 
@@ -497,9 +486,9 @@ class Tester(object):
                     
                     # run standard IBCC
                     self.gpgrid2 = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
-                                           shape_ls=shape_ls, rate_ls=rate_ls)
+                                           shape_ls=shape_ls, rate_ls=rate_ls, ls_initial=[ls_initial])
                     self.gpgrid2.verbose = self.verbose
-                    self.ibcc_combiner = IBCC(2, 2, alpha0, self.nu0, K)                
+                    self.ibcc_combiner = IBCC(2, alpha0.shape[1], alpha0, self.nu0, K)                
                     self.ibcc_combiner.clusteridxs_alpha0 = clusteridxs
                     self.ibcc_combiner.verbose = self.verbose
                     self.ibcc_combiner.min_iterations = 5
@@ -541,7 +530,7 @@ class Tester(object):
     
                     # use IBCC output to train GP
                     if self.optimise:
-                        self.gpgrid2.optimize([obsx, obsy], bcc_pred, maxfun=100)
+                        self.gpgrid2.fit([obsx, obsy], bcc_pred, maxfun=100, optimize=True)
                     else:
                         self.gpgrid2.fit([obsx, obsy], bcc_pred)
                     pT, _ = self.gpgrid2.predict([reportsx_grid,  reportsy_grid], variance_method='sample') # use the report locations
@@ -610,7 +599,7 @@ class Tester(object):
                     
 # RUN IBCC -- will only detect the report locations properly, otherwise defaults to kappa ------------------
             if 'IBCC' in self.methods:
-                self.ibcc2 = IBCC(2, 2, alpha0, self.nu0, K, uselowerbound=True)                
+                self.ibcc2 = IBCC(2, alpha0.shape[1], alpha0, self.nu0, K, uselowerbound=True)                
                 self.ibcc2.clusteridxs_alpha0 = clusteridxs
                 self.ibcc2.verbose = self.verbose
                 self.ibcc2.min_iterations = 5
@@ -646,7 +635,7 @@ class Tester(object):
                         rate_ls = shape_ls / ls_initial                    
                     
                         #HEATMAPBCC OBJECT
-                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
+                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
                                       rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
                         self.heatmapcombiner.min_iterations = 4
                         self.heatmapcombiner.max_iterations = 200
