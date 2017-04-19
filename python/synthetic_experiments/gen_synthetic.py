@@ -88,11 +88,11 @@ logging.info('Incrementing number of reports by %i in each iteration.' % Nrep_in
 # REPORTERS
 S = 20 # number of reporters
 
-nproportions = 3
+nproportions = 5
 if nproportions > S:
     nproportions = S
-weak_proportions = np.arange(1.0, nproportions + 1)
-weak_proportions /= (nproportions + 1)
+weak_proportions = np.arange(0.0, nproportions)
+weak_proportions /= (nproportions - 1)
 
 # Run only lowest proportion
 #weak_proportions = [1]

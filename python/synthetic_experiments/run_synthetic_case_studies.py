@@ -70,7 +70,8 @@ def plot_heatmap(nx, ny, x, y, t, title='density', transparency=0.0, fig=None, c
         fig = plt.figure()
 
     cax = plt.imshow(z_plot, cmap=cmap, aspect=None, origin='lower', vmin=0, vmax=1, interpolation='none', filterrad=0.01)
-    plt.colorbar(cax, orientation='horizontal', pad=0.05, shrink=0.9)
+    if colorbar_on:
+        plt.colorbar(cax, orientation='horizontal', pad=0.05, shrink=0.9)
     
     #ax.set_zlim3d(0, 1)
     plt.title(title)

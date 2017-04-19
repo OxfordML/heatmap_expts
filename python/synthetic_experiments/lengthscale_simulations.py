@@ -2,8 +2,6 @@
 Tests using synthetic data to show that it is possible to learn the length-scale using HeatmapBCC, GPClassifierVB or 
 the SKLearn implementation.
 
-TODO: subtitles on plots 4 and 5
-TODO: remove colorbars on all but the last plot of 4 and 5
 TODO: why does the plot of f look wrong? Is the order of the predictions wrong?
 TODO: test with noisy reports
 
@@ -285,7 +283,6 @@ def plot_results(methodlabel, nmethods, methodidx, col, figures, lb_results, kf,
     plt.ylim(-0.01, 1.01)
      
     p4 = plt.figure(figures[3].number)
-    plt.title(r'$\rho$') # needs an 'r' in front of string to treat as raw text so that \r is not an escape sequence
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
         ax = p4.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
         #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=ax)
@@ -300,11 +297,10 @@ def plot_results(methodlabel, nmethods, methodidx, col, figures, lb_results, kf,
     plt.legend(loc='best')
      
     p5 = plt.figure(figures[4].number)
-    plt.title('f at the training points')   
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
         ax = p5.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
         #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=ax)
-        plot_heatmap(nx, ny, x_all, y_all, chosen_f_train, methodlabel, fig=ax, colorbar_on=False)
+        plot_heatmap(nx, ny, xreports, yreports, chosen_f_train, methodlabel, fig=ax, colorbar_on=False)
     else:
         plt.subplot(np.ceil(nmethods/2.0), 2, methodidx)        
         plt.plot(xreports, chosen_f_train, label='%s, ls=%.2f' % (methodlabel, chosen_ls), color=col)
@@ -362,7 +358,9 @@ if __name__ == '__main__':
     p2 = plt.figure()
     p3 = plt.figure()
     p4 = plt.figure()
+    plt.title(r'$\rho$') # needs an 'r' in front of string to treat as raw text so that \r is not an escape sequence    
     p5 = plt.figure()
+    plt.title('f at the training points')
     figures = [p1, p2, p3, p4, p5]
     
 # GPVB ----------------------------------------------------------------------------------------------------------------
@@ -382,8 +380,8 @@ if __name__ == '__main__':
             # reset the shuffling
             kf.random_state = kfold_random_state
             for train, test in kf.split(dataidxs):     
-            
-                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(ls_i, train, test)
+                trainreps = np.in1d(dataidxreports, train)
+                t_pred[test], rho_mean[test], lb_k, f_train[trainreps], dll_k = test_vb_gp(ls_i, train, test)
                 lb_results[i] += lb_k
                 dll_results[i] += dll_k
             
@@ -400,8 +398,8 @@ if __name__ == '__main__':
             #print "Cross entropy between densities: %.2f" % nlpd_results[i]
             print "Accuracy: %.2f" % acc_results[i] 
          
-        p1, p2, p3, p4, p5 = plot_results('GPC VB', len(methods) + 1, 4, 'b', figures, lb_results, kf, chosen_f_train, chosen_rho_mean, 
-                                          acc_results, roc_results)        
+        p1, p2, p3, p4, p5 = plot_results('GPC VB', len(methods) + 1, 4, 'b', figures, lb_results, kf, chosen_f_train, 
+                                          chosen_rho_mean, acc_results, roc_results)        
             
 # GPVB with analytical approximation -----------------------------------------------------------------------------------
     if 'gpvbanal' in methods: #use analytical 'rough' approximation instead of sampling to estimate output expected value
@@ -420,9 +418,8 @@ if __name__ == '__main__':
             # reset the shuffling
             kf.random_state = kfold_random_state
             for train, test in kf.split(dataidxs):     
-            
-                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)], dll_k = test_vb_gp(
-                                                                                         ls_i, train, test, vm='rough')
+                trainreps = np.in1d(dataidxreports, train)  
+                t_pred[test], rho_mean[test], lb_k, f_train[trainreps], dll_k = test_vb_gp(ls_i, train, test, vm='rough')
                 lb_results[i] += lb_k
                 dll_results[i] += dll_k      
             
@@ -459,8 +456,8 @@ if __name__ == '__main__':
             # reset the shuffling
             kf.random_state = kfold_random_state
             for train, test in kf.split(dataidxs):     
-             
-                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_vb_heatmapbcc(
+                trainreps = np.in1d(dataidxreports, train)
+                t_pred[test], rho_mean[test], lb_k, f_train[trainreps] = test_vb_heatmapbcc(
                                                                                          ls_i, train, test, vm='rough')
                 lb_results[i] += lb_k
              
@@ -496,8 +493,8 @@ if __name__ == '__main__':
             # reset the shuffling
             kf.random_state = kfold_random_state        
             for train, test in kf.split(dataidxs):        
-            
-                t_pred[test], rho_mean[test], lb_k, f_train[np.in1d(dataidxreports, train)] = test_sklearn_gp(ls_i, train, test)
+                trainreps = np.in1d(dataidxreports, train)
+                t_pred[test], rho_mean[test], lb_k, f_train[trainreps] = test_sklearn_gp(ls_i, train, test)
                 lb_results[i] += lb_k
             
             if np.sum(lb_results[i] >= lb_results[:i]) == i:

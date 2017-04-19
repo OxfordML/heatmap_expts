@@ -35,9 +35,8 @@ from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
 from ibcc import IBCC
 from gp_classifier_vb import GPClassifierVB
-from scipy.sparse import coo_matrix, coo
-from scipy.stats import gaussian_kde, kendalltau, multivariate_normal as mvn, beta
-from sklearn.neighbors.unsupervised import NearestNeighbors
+from scipy.sparse import coo_matrix
+from scipy.stats import gaussian_kde, kendalltau, beta
 from sklearn.neighbors.classification import KNeighborsClassifier
 from sklearn import svm
 
@@ -81,6 +80,7 @@ class Tester(object):
         self.densityVar_all = {}
         self.auc_all = {}
         self.mce_all = {}
+        self.kl_all = {}
         self.rmse_all = {}
         self.errvar_all = {}
 
@@ -103,7 +103,7 @@ class Tester(object):
         
         self.ignore_report_point_density = False
     
-    def evaluate_discrete(self, results, Nlabels, gold_labels):
+    def evaluate_discrete(self, results, Nlabels, gold_labels, gold_density):
         evaluator = Evaluator("", "BCCHeatmaps", "Ushahidi_Haiti_Building_Damage")
         
         for method in results:
@@ -122,6 +122,7 @@ class Tester(object):
 
             testresults = testresults[gold_labels>=0]
             gold_labels_i = gold_labels[gold_labels>=0]
+            gold_density_i = gold_density[gold_density>=0]
 
             #Use only confident labels -- useful for e.g. PRN
             testresults = testresults[(gold_labels_i>=0.9) | (gold_labels_i <= 0.1)]
@@ -141,6 +142,9 @@ class Tester(object):
                 auc = np.sum(np.bincount(discrete_gold) * auc_by_class) / len(discrete_gold)
             else:
                 auc = auc_by_class
+                
+            kl = mce - ( np.sum(gold_density_i * np.log(gold_density_i)) / float(len(gold_labels_i)) )
+            mce = np.log2(np.e) * mce # in bits, but KL in nats
             
             acc = np.sum(np.round(testresults)==discrete_gold) / float(len(gold_labels_i))
             tp = np.sum((testresults >= 0.5) & (gold_labels_i >= 0.5))
@@ -167,6 +171,7 @@ class Tester(object):
                 self.rmse_all[method] = [rmse]
                 self.errvar_all[method] = [error_var]
                 self.mce_all[method] = [mce]
+                self.kl_all[method] = [kl]
                 
                 self.acc_all[method] = [acc]
                 self.pos_all[method] = [pos_percent]
@@ -178,6 +183,7 @@ class Tester(object):
                 self.rmse_all[method].append(rmse)
                 self.errvar_all[method].append(error_var)
                 self.mce_all[method].append(mce)
+                self.kl_all[method].append(kl)
 
                 self.acc_all[method].append(acc)
                 self.pos_all[method].append(pos_percent)
@@ -221,11 +227,12 @@ class Tester(object):
             gold_density_i = gold_density_i[gold_density_i >= 0]                                      
 
             mced = nlpd_beta(gold_density_i, est_density, est_density_var) 
+            mced = np.log2(np.e) * mced # in bits
             print "Cross entropy (density estimation): %.4f" % mced
 
             rmsed = np.sqrt( np.mean((est_density - gold_density_i)**2) )
             print "RMSE (density estimation): %.4f" % rmsed
-
+            
             tau, _ = kendalltau(est_density, gold_density_i)
             if np.isnan(tau):
                 print "Kendall's Tau --> NaNs are mapped to zero for plotting"
@@ -451,7 +458,6 @@ class Tester(object):
                     
                     print "GP LENGTH SCALE PROBABILITIES:"
                     print pls_giv_data
-                                        
                     
                 results['GP'] = gp_preds
                 densityresults['GP'] = gp_preds
@@ -686,7 +692,7 @@ class Tester(object):
     
 # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             if np.any(gold_labels):
-                self.evaluate_discrete(results, Nlabels, gold_labels)
+                self.evaluate_discrete(results, Nlabels, gold_labels, gold_density)
 
             if np.any(gold_density):
                 self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)
@@ -718,7 +724,7 @@ class Tester(object):
     
             # EVALUATE ALL RESULTS -----------------------------------------------------------------------------------------
             if np.any(gold_labels):
-                self.evaluate_discrete(results, Nlabels, gold_labels)
+                self.evaluate_discrete(results, Nlabels, gold_labels, gold_density)
 
             if np.any(gold_density):
                 self.evaluate_density(densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny)
@@ -745,6 +751,7 @@ class Tester(object):
         np.save(self.outputdir + "rmse.npy", self.rmse_all)
         np.save(self.outputdir + "errvar.npy", self.errvar_all)
         np.save(self.outputdir + "auc.npy", self.auc_all)
+        np.save(self.outputdir + "kl.npy", self.kl_all)
         np.save(self.outputdir + "mce.npy", self.mce_all)
         np.save(self.outputdir + "rmsed.npy", self.rmsed_all)
         np.save(self.outputdir + "tau.npy", self.tau_all)
