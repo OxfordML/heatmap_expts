@@ -1,4 +1,5 @@
-*
+synth/*
+prn/*/*
 /haiti_unosat_target_list.npy
 /haiti_unosat_target_grid.npy
 output

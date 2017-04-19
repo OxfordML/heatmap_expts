@@ -101,10 +101,10 @@ methods = [
            'NN',
            'SVM',
            'oneclassSVM',
-#            'KDE',
-#            'IBCC',
-#            'GP',
-#            'IBCC+GP',
+           'KDE',
+           'IBCC',
+           'GP',
+           'IBCC+GP',
            'HeatmapBCC'
            ]
 
