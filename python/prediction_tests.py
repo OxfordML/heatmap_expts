@@ -322,7 +322,7 @@ class Tester(object):
                 
                 svc.fit(posinputdata)
                 
-                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['1-class SVM'] = svc.decision_function(targets_single_arr) # confidence scores not probabilities
                 densityresults['1-class SVM'] = svc.predict(targets_single_arr) # need values between 0 and 1 for this. no probabilities available, so only have discrete
