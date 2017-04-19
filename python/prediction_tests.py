@@ -310,19 +310,19 @@ class Tester(object):
                 targets_single_arr = np.concatenate(( targetsx.reshape(1, len(targetsx)),
                                                       targetsy.reshape(1, len(targetsy)) ))
 
-                densityresults['MV'] = np.array([fraction_pos[i] if i > -1 else 0.5 for i in tr_idxs])
+                densityresults['MV'] = np.array([fraction_pos[0, i] if i > -1 else 0.5 for i in tr_idxs])
                 results['MV'] = np.round(densityresults['MV'])
                 density_var['MV'] = np.zeros(len(results['MV']))
                 
                 logging.info("MV complete.")                
 
             if 'oneclassSVM' in self.methods:
-                posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
+                posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0])).T
                 svc = svm.OneClassSVM()
                 
                 svc.fit(posinputdata)
                 
-                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['1-class SVM'] = svc.decision_function(targets_single_arr) # confidence scores not probabilities
                 densityresults['1-class SVM'] = svc.predict(targets_single_arr) # need values between 0 and 1 for this. no probabilities available, so only have discrete
@@ -334,7 +334,7 @@ class Tester(object):
                 svc = svm.SVC(probability=True)
                 svc.fit(C[:, 1:3], posreports)
                 
-                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['SVM'] = svc.decision_function(targets_single_arr)
                 densityresults['SVM'] = svc.predict_proba(targets_single_arr)[:, 1] # confidence scores not probabilities
@@ -346,7 +346,7 @@ class Tester(object):
                 nn_classifier = KNeighborsClassifier()
                 nn_classifier.fit(C[:, 1:3], posreports)
                 
-                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['NN'] = nn_classifier.predict(targets_single_arr)
                 densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)[:, 1]
@@ -672,7 +672,7 @@ class Tester(object):
                     rate_ls = shape_ls / self.ls_initial
                              
                     #HEATMAPBCC OBJECT
-                    self.heatmapcombiner = HeatMapBCC(nx, ny, 2, 2, alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
+                    self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
                                   rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
                     self.heatmapcombiner.min_iterations = 4
                     self.heatmapcombiner.max_iterations = 200
