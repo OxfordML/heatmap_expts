@@ -317,10 +317,10 @@ class Tester(object):
                 logging.info("MV complete.")                
 
             if 'oneclassSVM' in self.methods:
-                posinputdata  = np.hstack((reportsx[posreports>0], reportsy[posreports>0]))
+                posinputdata  = np.vstack((reportsx[posreports>0], reportsy[posreports>0]))
                 svc = svm.OneClassSVM()
                 
-                svc.fit(posinputdata.flatten())
+                svc.fit(posinputdata)
                 
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
@@ -334,7 +334,7 @@ class Tester(object):
                 svc = svm.SVC(probability=True)
                 svc.fit(C[:, 1:3], posreports)
                 
-                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['SVM'] = svc.decision_function(targets_single_arr)
                 densityresults['SVM'] = svc.predict_proba(targets_single_arr)[:, 1] # confidence scores not probabilities
@@ -346,7 +346,7 @@ class Tester(object):
                 nn_classifier = KNeighborsClassifier()
                 nn_classifier.fit(C[:, 1:3], posreports)
                 
-                targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
+                targets_single_arr = np.vstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['NN'] = nn_classifier.predict(targets_single_arr)
                 densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)[:, 1]
