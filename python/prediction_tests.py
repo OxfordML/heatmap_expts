@@ -388,10 +388,10 @@ class Tester(object):
                     w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 5)
                     w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 5)
                     if posinputdata.shape[1] != 0 and kdepos:
-                        logp_loc_giv_damage = logp_loc_giv_damage*(1-w_damage) + kdepos.logpdf(targets)*w_damage
+                        logp_loc_giv_damage = logp_loc_giv_damage*(1-w_damage) + np.log(kdepos.evaluate(targets))*w_damage
                             
                     if neginputdata.shape[1] != 0 and kdeneg:
-                        logp_loc_giv_nodamage = logp_loc_giv_nodamage*(1-w_nodamage) + kdeneg.logpdf(targets)*w_nodamage
+                        logp_loc_giv_nodamage = logp_loc_giv_nodamage*(1-w_nodamage) + np.log(kdeneg.evalute(targets))*w_nodamage
     
                     p_damage = self.z0
                     p_damage_loc = np.exp(logp_loc_giv_damage + np.log(p_damage))
