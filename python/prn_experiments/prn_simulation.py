@@ -97,11 +97,15 @@ PLOT_SYNTH_DATA = False
 SAVE_RESULTS = True
 
 methods = [
-            'IBCC',
-            'KDE',
-            'GP',
-            'IBCC+GP',
-            'HeatmapBCC'
+           'MV',
+           'NN',
+           'SVM',
+           'oneclassSVM',
+#            'KDE',
+#            'IBCC',
+#            'GP',
+#            'IBCC+GP',
+           'HeatmapBCC'
            ]
 
 # Number of datasets
