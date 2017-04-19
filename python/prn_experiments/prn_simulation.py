@@ -4,14 +4,15 @@ Load Planetary response network data and run active learning simulations.
 
 import sys
 
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
+sys.path.append("./python")
+sys.path.append("../HeatMapBCC/python")
+sys.path.append("../pyIBCC/python")
 
 from prediction_tests import Tester
 import numpy as np
 import logging
 import os
-from scipy.stats import norm, gamma
+from scipy.stats import gamma
 
 import matplotlib.pyplot as plt
 from matplotlib.mlab import griddata
