@@ -20,7 +20,6 @@ sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
 
 import numpy as np
 import gen_synthetic as gs
-from gen_synthetic import dataset_location
 
 nruns = gs.nruns
 Nreports = gs.Nreports
