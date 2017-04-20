@@ -349,7 +349,9 @@ class Tester(object):
                 targets_single_arr = np.hstack((targetsx[:, np.newaxis], targetsy[:, np.newaxis]))
 
                 results['NN'] = nn_classifier.predict(targets_single_arr)
-                densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)[:, 1]
+                densityresults['NN'] = nn_classifier.predict_proba(targets_single_arr)
+                if densityresults['NN'].shape[1] == 2:
+                    densityresults['NN'] = densityresults['NN'][:, 1]
                 density_var['NN'] = np.zeros(len(results['NN']))
                 
                 logging.info("NN complete.")                

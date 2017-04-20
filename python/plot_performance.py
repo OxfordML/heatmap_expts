@@ -253,7 +253,8 @@ if __name__ == '__main__':
               'MV': 'cyan', 
               'NN': 'magenta',
               'SVM': 'darkyellow',
-              'oneclassSVM': 'orange'}
+              'oneclassSVM': 'orange',
+              '1-class SVM': 'orange'}
     
     marks = {'HeatmapBCC':'x',
               'IBCC':'^',
@@ -263,7 +264,8 @@ if __name__ == '__main__':
               'MV': '>', 
               'NN': '<',
               'SVM': 'D',
-              'oneclassSVM': '*'}    
+              'oneclassSVM': '*',
+              '1-class SVM': '*'}    
     
     # load results for the density estimation        
 #     # Root mean squared error    

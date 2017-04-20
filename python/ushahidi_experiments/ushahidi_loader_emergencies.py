@@ -56,11 +56,14 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.DEBUG)
 
     methods = [
-               'KDE',
-               'IBCC',
-               'GP',
-               'IBCC+GP',
-               'HeatmapBCC'
+           'MV',
+           'NN',
+           'oneclassSVM',
+           'KDE',
+           'IBCC',
+           'GP',
+           'IBCC+GP',
+           'HeatmapBCC'
                ]
 
     #LOAD THE DATA to run unsupervised learning tests ------------------------------------------------------------------
