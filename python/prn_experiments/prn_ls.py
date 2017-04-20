@@ -4,8 +4,9 @@ Load Planetary response network data and run active learning simulations.
 
 import sys
 
-sys.path.append("/homes/49/edwin/robots_code/HeatMapBCC/python")
-sys.path.append("/homes/49/edwin/robots_code/pyIBCC/python")
+sys.path.append("./python")
+sys.path.append("../HeatMapBCC/python")
+sys.path.append("../pyIBCC/python")
 
 #from scipy.stats import beta, bernoulli, multivariate_normal as mvn
 #import prediction_tests
@@ -99,10 +100,10 @@ PLOT_SYNTH_DATA = False
 SAVE_RESULTS = True
 
 methods = [
-            'IBCC',
-            'KDE',
+            #'IBCC',
+            #'KDE',
             'GP',
-            'IBCC+GP',
+            #'IBCC+GP',
             'HeatmapBCC'
            ]
 
@@ -164,18 +165,18 @@ if __name__ == '__main__':
         if J==L:
             alpha0[range(J), range(L)] = 5
         
-#         if featurename=='structural_damage_1':
-#             alpha0[1, 1] = 2
-#             alpha0[0, 0] = 2                 
-#         elif featurename=='structural_damage_2':
-#             alpha0[1, 2] = 2
-#             alpha0[0, 0] = 2
-#         elif featurename=='structural_damage_3':
-#             alpha0[1, 3] = 2
-#             alpha0[0, 0] = 2
-#         else:
-        alpha0[0, 0] = 19
-        alpha0[1:, 0] = 15
+        if featurename=='structural_damage_1':
+            alpha0[1, 1] = 2
+            alpha0[0, 0] = 2                 
+        elif featurename=='structural_damage_2':
+            alpha0[1, 2] = 2
+            alpha0[0, 0] = 2
+        elif featurename=='structural_damage_3':
+            alpha0[1, 3] = 2
+            alpha0[0, 0] = 2
+        else:
+            alpha0[0, 0] = 19
+            alpha0[1:, 0] = 15
             
         snap_to_grid = True
     
@@ -183,7 +184,7 @@ if __name__ == '__main__':
         
         lengthscales =[128, 64, 32, 20, 16, 8, 4, 2, 1]#, 256, 512]
         
-        #lml_h = np.zeros(len(lengthscales))
+        lml_h = np.zeros(len(lengthscales))
         lml_g = np.zeros(len(lengthscales))
         
         for i, ls in enumerate(lengthscales):
@@ -192,35 +193,34 @@ if __name__ == '__main__':
             rate_ls = shape_ls / ls
                               
             #HEATMAPBCC OBJECT
-#             heatmapcombiner = HeatMapBCC(nx, ny, J, L, alpha0, np.unique(C_sample[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
-#                           rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
-#             heatmapcombiner.min_iterations = 4
-#             heatmapcombiner.max_iterations = 200
-#             heatmapcombiner.verbose = True
-#             heatmapcombiner.conv_threshold = 1e-3
-#             heatmapcombiner.uselowerbound = True
-#                     
-#             logging.info("Running HeatmapBCC... length scale = %f" % ls)
-#                
-#             heatmapcombiner.combine_classifications(C_sample)
-#             results, _, _ = heatmapcombiner.predict(C_sample[:, 1], C_sample[:, 2], variance_method='sample')
-#             results = results[1, :]
-#                 
-#             lml_h[i] = heatmapcombiner.lowerbound()
+            heatmapcombiner = HeatMapBCC(nx, ny, J, L, alpha0, np.unique(C_sample[:,0]).shape[0], z0=z0, shape_s0=shape_s0, 
+                          rate_s0=rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+            heatmapcombiner.min_iterations = 4
+            heatmapcombiner.max_iterations = 200
+            heatmapcombiner.verbose = True
+            heatmapcombiner.conv_threshold = 1e-3
+            heatmapcombiner.uselowerbound = True
+                    
+            logging.info("Running HeatmapBCC... length scale = %f" % ls)
+               
+            heatmapcombiner.combine_classifications(C_sample)
+            results, _, _ = heatmapcombiner.predict(C_sample[:, 1], C_sample[:, 2], variance_method='sample')
+            results = results[1, :]
+                
+            lml_h[i] = heatmapcombiner.lowerbound()
         
-            gpgrid = GPClassifierVB(nx, ny, z0=z0, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=2.0, rate_ls=rate_ls)
-            gpgrid.min_iter_VB = 5
-            gpgrid.verbose = True
-            gpgrid.max_iter_G = 10
-            gpgrid.conv_threshold = 1e-5
-            gpgrid.conv_check_freq = 1
-            countsize = 1.0
-            gpgrid.fit((C_sample[:, 1], C_sample[:, 2]), C_sample[:, 3] * countsize, totals=np.zeros((C_sample.shape[0], 1)) + countsize,
-                       update_s = True)
-            results, _ = gpgrid.predict((C_sample[:, 1], C_sample[:, 2]), variance_method='sample')
-            results = results[:, 0]
-             
-            lml_g[i] = gpgrid.lowerbound()
+#             gpgrid = GPClassifierVB(2, z0=z0, shape_s0=shape_s0, rate_s0=rate_s0, shape_ls=2.0, rate_ls=rate_ls)
+#             gpgrid.min_iter_VB = 5
+#             gpgrid.verbose = True
+#             gpgrid.max_iter_G = 10
+#             gpgrid.conv_threshold = 1e-5
+#             gpgrid.conv_check_freq = 1
+#             countsize = 1.0
+#             gpgrid.fit(C_sample[:, 1:3], C_sample[:, 3] * countsize, totals=np.zeros((C_sample.shape[0], 1)) + countsize)
+#             results, _ = gpgrid.predict((C_sample[:, 1], C_sample[:, 2]), variance_method='sample')
+#             results = results[:, 0]
+#              
+#             lml_g[i] = gpgrid.lowerbound()
              
             plt.figure()
             plt.title('Length scale %i' % ls)
@@ -246,7 +246,7 @@ if __name__ == '__main__':
         plt.xlabel("Length scale")
         plt.ylabel("Variational Lower Bound")
         plt.legend(loc='best')
-        plt.savefig("./lengthscale_prn_test_%s.png" % featurename)
+        plt.savefig("./output/prn/lengthscale_prn_test_%s.png" % featurename)
         
 #         plt.figure()
 #         plt.title('Data')

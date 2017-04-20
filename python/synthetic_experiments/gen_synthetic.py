@@ -44,14 +44,14 @@ SAVE_RESULTS = True
 
 methods = [
            'MV',
-           'NN',
-           'SVM',
-           'oneclassSVM',
-           'KDE',
-           'IBCC',
-           'GP',
-           'IBCC+GP',
-           'HeatmapBCC'
+#            'NN',
+#            'SVM',
+#            'oneclassSVM',
+#            'KDE',
+#            'IBCC',
+#            'GP',
+#            'IBCC+GP',
+#            'HeatmapBCC'
            ]
 
 # GROUND TRUTH
