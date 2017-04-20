@@ -78,7 +78,7 @@ z0 = nu0[1] / np.sum(nu0)
 
 # Number of datasets
 nruns = 25
-nsteps = 11
+nsteps = 6
 
 # REPORTS
 Nreports = 2100#500 #400 # total number of reports in complete data set
