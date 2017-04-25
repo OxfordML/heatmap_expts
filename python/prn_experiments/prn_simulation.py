@@ -143,7 +143,7 @@ if __name__ == '__main__':
         
         # REPORTS
         Nreps_initial = int(Nreports * Nreps_initial_fraction) #60 #50 # number of labels in first iteration data set. 
-        Nrep_inc = (Nreports - Nreps_initial) / (nsteps - 1) # increment the number of labels at each iteration    
+        Nrep_inc = int((Nreports - Nreps_initial) / (nsteps - 1)) # increment the number of labels at each iteration    
         logging.info('Number of reports = %i. Incrementing number of reports by %i in each iteration.' % (Nreports, Nrep_inc))
         
         experiment_label = expt_label_template % featurename
