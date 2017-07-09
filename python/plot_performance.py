@@ -93,7 +93,7 @@ def load_average_results(nruns, weak_proportions, filename, avg_type='median'):
         avgmethod = np.mean
         def lq(r):
             return np.mean(r) - np.std(r) 
-        lqmethod = np.std
+        lqmethod = lq
         def uq(r): 
             return np.mean(r) + np.std(r)
         uqmethod = uq
@@ -132,7 +132,7 @@ def load_average_results(nruns, weak_proportions, filename, avg_type='median'):
                 
     return avg_results, lq_results, uq_results, methods
 
-def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
+def load_diff_results(nruns, weak_proportions, filename):
     avg_results = {}
     lq_results = {}
     uq_results = {}
@@ -161,8 +161,6 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                         
                     if not m==testmethod:
                         current_results[m] = testresults - np.array(current_results[m])
-                        if negate_diff:
-                            current_results[m] = - current_results[m]
                         results_pcs[m][d, :] = current_results[m]
         
                     if p_idx == 0:
@@ -189,7 +187,7 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
         xvals = Nreps_iter
     
     if plot_diffs:
-        y_avg, y_l, y_u, methods = load_diff_results(nruns, weak_proportions, filename, negate_diff=True)
+        y_avg, y_l, y_u, methods = load_diff_results(nruns, weak_proportions, filename)
     else:
         y_avg, y_l, y_u, methods = load_average_results(nruns, weak_proportions, filename)
 
