@@ -282,7 +282,7 @@ class Tester(object):
             density_var = {}
     
             # indicator array to show whether reports are positive or negative
-            posreports = (C[:, 3] >= 1).astype(float)
+            posreports = (C[:, 3] >= 1).astype(float) # it previously had '==' instead of '>='
             negreports = (C[:, 3] == 0).astype(float)
     
             # Report coords for this round

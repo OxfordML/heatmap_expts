@@ -93,7 +93,7 @@ def load_average_results(nruns, weak_proportions, filename, avg_type='median'):
         avgmethod = np.mean
         def lq(r):
             return np.mean(r) - np.std(r) 
-        lqmethod = np.std
+        lqmethod = lq
         def uq(r): 
             return np.mean(r) + np.std(r)
         uqmethod = uq
@@ -107,28 +107,28 @@ def load_average_results(nruns, weak_proportions, filename, avg_type='median'):
                 current_results = np.load(datadir + filename).item()
                 methods = current_results.keys()
                     
-                if cluster_spread not in avg_results[p]:
+                if cluster_spread not in avg_results:
                     avg_results[cluster_spread] = {}
                     lq_results[cluster_spread] = {}
                     uq_results[cluster_spread] = {}                
                 
                 for m in methods:
                     if not m in results_pcs:
-                        results_pcs[m] = np.zeros((nprops, nruns, len(Nreps_iter))) 
-                    results_pcs[m][p, d, :] = current_results[m]
+                        results_pcs[m] = np.zeros((nruns, len(Nreps_iter))) 
+                    results_pcs[m][d, :] = current_results[m]
                     if p_idx == 0:
                         avg_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
                         lq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
                         uq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1])) 
         
             for m in results_pcs:
-                avg_results[cluster_spread][m][p, :] = avgmethod(results_pcs[m], axis=0)
-                lq_results[cluster_spread][m][p, :] = lqmethod(results_pcs[m], axis=0)
-                uq_results[cluster_spread][m][p, :] = uqmethod(results_pcs[m], axis=0)
+                avg_results[cluster_spread][m][p_idx, :] = avgmethod(results_pcs[m], axis=0)
+                lq_results[cluster_spread][m][p_idx, :] = lqmethod(results_pcs[m], axis=0)
+                uq_results[cluster_spread][m][p_idx, :] = uqmethod(results_pcs[m], axis=0)
                 
     return avg_results, lq_results, uq_results, methods
 
-def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
+def load_diff_results(nruns, weak_proportions, filename):
     avg_results = {}
     lq_results = {}
     uq_results = {}
@@ -144,10 +144,10 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                 
                 testmethod = 'HeatmapBCC' #compare this against the
                     
-                if cluster_spread not in avg_results[p]:
-                    avg_results[p][cluster_spread] = {}
-                    uq_results[p][cluster_spread] = {}
-                    lq_results[p][cluster_spread] = {}                
+                if cluster_spread not in avg_results:
+                    avg_results[cluster_spread] = {}
+                    uq_results[cluster_spread] = {}
+                    lq_results[cluster_spread] = {}                
                 
                 testresults = np.array(current_results[testmethod])
                 
@@ -157,8 +157,6 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                         
                     if not m==testmethod:
                         current_results[m] = testresults - np.array(current_results[m])
-                        if negate_diff:
-                            current_results[m] = - current_results[m]
                         results_pcs[m][d, :] = current_results[m]
         
                     if p_idx == 0:
@@ -167,9 +165,9 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                         uq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1])) 
         
             for m in results_pcs:
-                avg_results[cluster_spread][m][p, :, :] = np.median(results_pcs[m], axis=0)
-                lq_results[cluster_spread][m][p, :, :] = np.percentile(results_pcs[m], 25, axis=0)
-                uq_results[cluster_spread][m][p, :, :] = np.percentile(results_pcs[m], 75, axis=0)
+                avg_results[cluster_spread][m][p_idx, :] = np.median(results_pcs[m], axis=0)
+                lq_results[cluster_spread][m][p_idx, :] = np.percentile(results_pcs[m], 25, axis=0)
+                uq_results[cluster_spread][m][p_idx, :] = np.percentile(results_pcs[m], 75, axis=0)
     return avg_results, lq_results, uq_results, methods
 
 def plot_performance(Nreps_iter, weak_proportions, plot_separately, 
@@ -185,7 +183,7 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
         xvals = Nreps_iter
     
     if plot_diffs:
-        y_avg, y_l, y_u, methods = load_diff_results(nruns, weak_proportions, filename, negate_diff=True)
+        y_avg, y_l, y_u, methods = load_diff_results(nruns, weak_proportions, filename)
     else:
         y_avg, y_l, y_u, methods = load_average_results(nruns, weak_proportions, filename)
 
