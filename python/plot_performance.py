@@ -12,10 +12,10 @@ import logging, os
 
 #import run_synthetic_bias as expmt_module
 #import run_synthetic_noise as expmt_module
-import run_synthetic_noise_nogrid as expmt_module
+# import run_synthetic_noise_nogrid as expmt_module
 #import ushahidi_loader_damage as expmt_module
 #import ushahidi_loader_emergencies as expmt_module
-#import prn_simulation as expmt_module
+import prn_simulation as expmt_module
 
 if hasattr(expmt_module, 'cluster_spreads'):
     cluster_spreads = expmt_module.cluster_spreads
@@ -104,27 +104,31 @@ def load_average_results(nruns, weak_proportions, filename, avg_type='median'):
             for d in range(nruns):
                 datadir = get_data_dir(d, p, p_idx, cluster_spread)
     
+                if not os.path.exists(datadir + filename):
+                    methods = None
+                    continue
+    
                 current_results = np.load(datadir + filename).item()
                 methods = current_results.keys()
                     
-                if cluster_spread not in avg_results[p]:
+                if cluster_spread not in avg_results:
                     avg_results[cluster_spread] = {}
                     lq_results[cluster_spread] = {}
                     uq_results[cluster_spread] = {}                
                 
                 for m in methods:
                     if not m in results_pcs:
-                        results_pcs[m] = np.zeros((nprops, nruns, len(Nreps_iter))) 
-                    results_pcs[m][p, d, :] = current_results[m]
+                        results_pcs[m] = np.zeros((nruns, len(Nreps_iter))) 
+                    results_pcs[m][d, :] = current_results[m]
                     if p_idx == 0:
-                        avg_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
-                        lq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
-                        uq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1])) 
+                        avg_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m])))
+                        lq_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m])))
+                        uq_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m]))) 
         
             for m in results_pcs:
-                avg_results[cluster_spread][m][p, :] = avgmethod(results_pcs[m], axis=0)
-                lq_results[cluster_spread][m][p, :] = lqmethod(results_pcs[m], axis=0)
-                uq_results[cluster_spread][m][p, :] = uqmethod(results_pcs[m], axis=0)
+                avg_results[cluster_spread][m][p_idx, :] = avgmethod(results_pcs[m], axis=0)
+                lq_results[cluster_spread][m][p_idx, :] = lqmethod(results_pcs[m], axis=0)
+                uq_results[cluster_spread][m][p_idx, :] = uqmethod(results_pcs[m], axis=0)
                 
     return avg_results, lq_results, uq_results, methods
 
@@ -144,10 +148,10 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                 
                 testmethod = 'HeatmapBCC' #compare this against the
                     
-                if cluster_spread not in avg_results[p]:
-                    avg_results[p][cluster_spread] = {}
-                    uq_results[p][cluster_spread] = {}
-                    lq_results[p][cluster_spread] = {}                
+                if cluster_spread not in avg_results:
+                    avg_results[cluster_spread] = {}
+                    uq_results[cluster_spread] = {}
+                    lq_results[cluster_spread] = {}                
                 
                 testresults = np.array(current_results[testmethod])
                 
@@ -162,14 +166,14 @@ def load_diff_results(nruns, weak_proportions, filename, negate_diff=False):
                         results_pcs[m][d, :] = current_results[m]
         
                     if p_idx == 0:
-                        avg_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
-                        lq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1]))
-                        uq_results[cluster_spread][m] = np.zeros((nprops, current_results[m].shape[1])) 
+                        avg_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m])))
+                        lq_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m])))
+                        uq_results[cluster_spread][m] = np.zeros((nprops, len(current_results[m]))) 
         
             for m in results_pcs:
-                avg_results[cluster_spread][m][p, :, :] = np.median(results_pcs[m], axis=0)
-                lq_results[cluster_spread][m][p, :, :] = np.percentile(results_pcs[m], 25, axis=0)
-                uq_results[cluster_spread][m][p, :, :] = np.percentile(results_pcs[m], 75, axis=0)
+                avg_results[cluster_spread][m][p_idx, :] = np.median(results_pcs[m], axis=0)
+                lq_results[cluster_spread][m][p_idx, :] = np.percentile(results_pcs[m], 25, axis=0)
+                uq_results[cluster_spread][m][p_idx, :] = np.percentile(results_pcs[m], 75, axis=0)
     return avg_results, lq_results, uq_results, methods
 
 def plot_performance(Nreps_iter, weak_proportions, plot_separately, 
@@ -189,6 +193,10 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
     else:
         y_avg, y_l, y_u, methods = load_average_results(nruns, weak_proportions, filename)
 
+    if methods is None:
+        logging.info('Could not find data file %s' % filename)
+        return
+
     for lidx, l in enumerate(separate_plot_variable):
         for cs in cluster_spreads:
             plt.figure()
@@ -198,7 +206,9 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
                     yvals = y_avg[cs][m][:, lidx]
                 elif separate_idx == 0:
                     yvals = y_avg[cs][m][lidx, :]
-                plt.plot(xvals, yvals, label=m, color=colors[m], marker=marks[m])
+                # don't plot the invalid outputs -- some metrics are not applicable to all methods and produce all NaNs
+                if np.sum(np.isnan(yvals)) != len(yvals):
+                    plt.plot(xvals, yvals, label=m, color=colors[m], marker=marks[m])
             plt.xlim(np.min(xvals), np.max(xvals))     
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
@@ -252,7 +262,7 @@ if __name__ == '__main__':
               'KDE':'b', 
               'MV': 'cyan', 
               'NN': 'magenta',
-              'SVM': 'darkyellow',
+              'SVM': 'y',
               'oneclassSVM': 'orange',
               '1-class SVM': 'orange'}
     
@@ -268,114 +278,114 @@ if __name__ == '__main__':
               '1-class SVM': '*'}    
     
     # load results for the density estimation        
-#     # Root mean squared error    
-#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "rmsed.npy", 
-#                      'Root Mean Square Error of Density Estimates',
-#                      'Number of crowdsourced labels',
-#                      'RMSE',
-#                      "/rmsed.pdf")    
+    # Root mean squared error    
+    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "rmsed.npy", 
+                     'Root Mean Square Error of State Probabilities',
+                     'Number of crowdsourced labels',
+                     'RMSE',
+                     "/rmsed.pdf")    
       
     # Mean Cross Entropy
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mced.npy",
-                     "Negative Log Probability Density of Density Estimates",
+                     "Negative Log Probability Density of State Probabilities",
                      'Number of crowdsourced labels', 
                      'NLPD or Cross Entropy (bits)',
-                     "/mce_density.pdf")            
+                     "/mce_density")            
  
-    # Mean Cross Entropy
-    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mced.npy",
-                     "Improvement of HeatmapBCC in \n Negative Log Probability Density of Density Estimates",
-                     'Number of crowdsourced labels', 
-                     'NLPD or Cross Entropy (bits)',
-                     "/mce_density_diff.pdf", True)
+#     # Mean Cross Entropy
+#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mced.npy",
+#                      "Improvement of HeatmapBCC in \n Negative Log Probability Density of State Probabilities",
+#                      'Number of crowdsourced labels', 
+#                      'NLPD or Cross Entropy (bits)',
+#                      "/mce_density_diff", True)
 
     # KL divergence
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
-                     "KL Divergence of Density Estimates",
+                     "KL Divergence of State Probabilities",
                      'Number of crowdsourced labels', 
                      'KL-divergence',
-                     "/kl.pdf", False)
+                     "/kl", False)
     
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
-                     "Improvement of HeatmapBCC in \n KL Divergence of Density Estimates",
+                     "Improvement of HeatmapBCC in \n KL Divergence of State Probabilities",
                      'Number of crowdsourced labels', 
                      'KL-divergence',
-                     "/kl_diff.pdf", False)
+                     "/kl_diff", False)
 
     # load results for predicting individual data points
-#     # Brier score
-#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "rmse.npy",
-#                      "Brier Score",
-#                      'Number of crowdsourced labels', 
-#                      'Brier Score',
-#                      "/brier.pdf", False)
+    # Brier score
+    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "rmse.npy",
+                     "Brier Score",
+                     'Number of crowdsourced labels', 
+                     'Brier Score',
+                     "/brier", False)
     
     # AUC
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "auc.npy",
                      "AUC ROC",
                      'Number of crowdsourced labels', 
                      'AUC',
-                     "/auc.pdf", False)
+                     "/auc", False)
     
-    # Differences in AUC
-    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "auc.npy",
-                     "AUC ROC Improvement of HeatmapBCC",
-                     'Number of crowdsourced labels', 
-                     'AUC',
-                     "/auc.pdf", True)
-     
-#     # Mean cross entropy
-#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
-#                      "Cross Entropy Classification Error",
+#     # Differences in AUC
+#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "auc.npy",
+#                      "AUC ROC Improvement of HeatmapBCC",
 #                      'Number of crowdsourced labels', 
-#                      'Cross Entropy (bits)',
-#                      "/mce_discrete.pdf", False)
-#             
+#                      'AUC',
+#                      "/auc_diffs", True)
+     
+    # Mean cross entropy
+    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
+                     "Cross Entropy Classification Error",
+                     'Number of crowdsourced labels', 
+                     'Cross Entropy (bits)',
+                     "/mce_discrete", False)
+             
 #     # Mean cross entropy difference
 #     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
 #                      "Improvement of HeatmapBCC in \n Cross Entropy Error",
 #                      'Number of crowdsourced labels', 
 #                      'Cross Entropy (bits)',
-#                      "/mce_discrete_diffs.pdf", True)
+#                      "/mce_discrete_diffs", True)
     
-#     # Accuracy
-#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "acc.npy",
-#                      "Classification Accuracy",
-#                      'Number of crowdsourced labels', 
-#                      'Fraction of Points Correctly Classified',
-#                      "/acc.pdf", False)
+    # Accuracy
+    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "acc.npy",
+                     "Classification Accuracy",
+                     'Number of crowdsourced labels', 
+                     'Fraction of Points Correctly Classified',
+                     "/acc", False)
                     
     # PLOT PROPORTIONS -------------------------------------------------------------------------------------------------
     # load results for the density estimation        
 #     # Root mean squared error
 #     plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "rmsed.npy", 
-#                      'Root Mean Square Error of Density Estimates', 
+#                      'Root Mean Square Error of State Probabilities', 
 #                      'Proportion of Reliable Reporters', 
 #                      'RMSE', 
-#                      '/rmsed_p.pdf')
+#                      '/rmsed_p')
 
-    # AUC
-    plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "auc.npy", 
-                     "ROC AUC", 
-                     'Proportion of Reliable Reporters', 
-                     'AUC', 
-                     '/auc_p.pdf')
-
-    plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "auc.npy", 
-                     "Improvement of HeatmapBCC in ROC AUC", 
-                     'Proportion of Reliable Reporters', 
-                     'AUC', 
-                     '/auc_p_diff.pdf', True)
-        
-    # KL divergence from gold density
-    plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "kl.npy", 
-                     "KL-divergence", 
-                     'Proportion of Reliable Reporters', 
-                     'KL-divergence', 
-                     '/kl_p.pdf')
-
-    plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "kl.npy", 
-                     "Improvement of HeatmapBCC in KL-divergence", 
-                     'Proportion of Reliable Reporters', 
-                     'KL-divergence', 
-                     '/kl_p_diff.pdf')     
+#     # AUC
+#     plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "auc.npy", 
+#                      "ROC AUC", 
+#                      'Proportion of Reliable Reporters', 
+#                      'AUC', 
+#                      '/auc_p')
+# 
+#     plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "auc.npy", 
+#                      "Improvement of HeatmapBCC in ROC AUC", 
+#                      'Proportion of Reliable Reporters', 
+#                      'AUC', 
+#                      '/auc_p_diff', True)
+#         
+#     # KL divergence from gold density
+#     plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "kl.npy", 
+#                      "KL-divergence", 
+#                      'Proportion of Reliable Reporters', 
+#                      'KL-divergence', 
+#                      '/kl_p')
+# 
+#     plot_performance(Nreps_iter, weak_proportions, 'nreps', cluster_spreads, "kl.npy", 
+#                      "Improvement of HeatmapBCC in KL-divergence", 
+#                      'Proportion of Reliable Reporters', 
+#                      'KL-divergence', 
+#                      '/kl_p_diff')     

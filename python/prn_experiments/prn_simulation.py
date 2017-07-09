@@ -100,9 +100,9 @@ methods = [
            'MV',
            'NN',
            'SVM',
-           'oneclassSVM',
-           'KDE',
-           'IBCC',
+           #'oneclassSVM',
+           #'KDE',
+           #'IBCC',
            'GP',
            'IBCC+GP',
            'HeatmapBCC'
@@ -161,7 +161,7 @@ if __name__ == '__main__':
         # HYPERPARAMETERS ------------------------------------------------------------------------------------------------------
 
         optimize = True
-        ls = 16
+        ls = 20
         lpls = None
         
         # as an alternative to using the standard optimiser, we can test sample length-scale values here

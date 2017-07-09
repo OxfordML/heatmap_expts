@@ -35,7 +35,7 @@ bestnu0 = 100
 
 if __name__ == '__main__':
     
-    plot_results = True
+    plot_results = False
     
     datafile = "./data/prn_pilot_classifications_onerowpermark_withsubjectinfo.csv"
     outdir = "./data/prn_out"
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     
     wholesqidxs = np.argwhere((marks!='none') & (np.isnan(latmarks)) ).flatten() # the locations where the marking applies to the whole image
     nomarkidxs = np.argwhere(marks=='none').flatten()
-    markidxs = np.argwhere((marks!='none') & (1 - np.isnan(latmarks)) ).flatten()
+    markidxs = np.argwhere((marks!='none') & (np.invert(np.isnan(latmarks))) ).flatten()
     
     nmarks = np.sum(markidxs)
     gridx = np.zeros(nmarks)
@@ -79,12 +79,11 @@ if __name__ == '__main__':
     
     marktypes, marks_num_original = np.unique(marks, return_inverse=True)
     marks_num = marks_num_original[markidxs]
-    marktypes_nomark = np.zeros(len(nomarkidxs), dtype=str)
-    marktypes_nomark[:] = 'none'
+    marktypes_nomark = np.repeat(np.array(['none']), len(nomarkidxs))
     marks = marks[markidxs]
     
     damagelevels = np.array(dataframe["damage_assessment"].tolist())
-    idxs = np.argwhere(1 - np.isnan(damagelevels))
+    idxs = np.argwhere(np.invert(np.isnan(damagelevels)))
     damagelevels[np.argwhere(np.isnan(damagelevels))] = np.max(damagelevels[idxs]) + 1 # new values for the points where damage level not specified
     
     userids, users_original = np.unique(dataframe["user_id"], return_inverse=True)
@@ -99,7 +98,7 @@ if __name__ == '__main__':
     reslevelgroups[3] = np.arange(40, 70)
     
     
-    def add_whole_sq_labels(nomarkidxs, marktypes_nomark, marks, users, damagelevels, gridx, gridy):
+    def add_whole_sq_labels(nomarkidxs, marktypes_nomark, marks, users, damagelevels, gridx, gridy, damagelevels_all=None):
     
         # bottom left grid squares for the none marks
         bl_gridx, bl_gridy = convert_lat_lon_to_grid( np.array(dataframe["lat_lowerleft"].tolist())[nomarkidxs], 
@@ -146,12 +145,14 @@ if __name__ == '__main__':
             
             user_i = users_original[nomarkidxs][i]
             
-            newmarks = np.zeros(n_i, dtype=str)
-            newmarks[:] = marktypes_nomark[i]
+            newmarks = np.repeat(np.array([marktypes_nomark[i]]), n_i)
             marks = np.concatenate((marks, newmarks))
             users = np.concatenate((users, np.zeros(n_i) + user_i))
-            damagelevels = np.concatenate((damagelevels, np.zeros(n_i)))
-            
+            if damagelevels_all is None:
+                damagelevels = np.concatenate((damagelevels, np.zeros(n_i)))
+            else:
+                newdamagelevels = np.repeat(np.array([damagelevels_all[i]]), n_i)
+                damagelevels = np.concatenate((damagelevels, newdamagelevels))
             
         print "Smallest image we found covered %i squares" % smallest_sq
         return marks, users, damagelevels, gridx, gridy
@@ -188,7 +189,7 @@ if __name__ == '__main__':
         nomarkidxs_r = nomarkidxs[reslevelidxs[r][nomarkidxs]]
         marktypes_nomark_r = marktypes_nomark[reslevelidxs[r][nomarkidxs]]
         users_r = users[reslevelidxs[r][markidxs]]
-        damagelevels_r = damagelevels[reslevelidxs[r][markidxs]]
+        damagelevels_r = damagelevels[markidxs][reslevelidxs[r][markidxs]]
         gridx_r = gridx[reslevelidxs[r][markidxs]]
         gridy_r = gridy[reslevelidxs[r][markidxs]]
         wholesqidxs_r = wholesqidxs[reslevelidxs[r][wholesqidxs]]
@@ -203,7 +204,7 @@ if __name__ == '__main__':
         marks_r, users_r, damagelevels_r, gridx_r, gridy_r = add_whole_sq_labels(nomarkidxs_r, marktypes_nomark_r, marks_r, users_r, 
                                                          damagelevels_r, gridx_r, gridy_r)
         marks_r, users_r, damagelevels_r, gridx_r, gridy_r = add_whole_sq_labels(wholesqidxs_r, dataframe["mark_type"][wholesqidxs_r].tolist(), 
-                                                         marks_r, users_r, damagelevels_r, gridx_r, gridy_r)
+                                                         marks_r, users_r, damagelevels_r, gridx_r, gridy_r, damagelevels[wholesqidxs_r])
         
         # SEPARATE MARKING TYPES ------------------------------------------------------------------------------------------
         # Separate data into different datasets for each marking type, including each damage assessment level.
@@ -315,7 +316,7 @@ if __name__ == '__main__':
             K = len(np.unique(C[tk][:, 0])) 
             
             #flatten the input data so it can be used with standard IBCC
-            linearIdxs = np.ravel_multi_index((C[tk][:, 1], C[tk][:, 2]), dims=(nx, ny))
+            linearIdxs = np.ravel_multi_index((C[tk][:, 1], C[tk][:, 2]), dims=(int(nx), int(ny)))
             C_flat = C[tk][:,[0,1,3]]            
             linear_unique, linear_source, linear_inv = np.unique(linearIdxs, return_index=True, return_inverse=True)
             C_flat[:,1] = linear_inv
@@ -427,8 +428,8 @@ if __name__ == '__main__':
                         print "For %s plotting %i positive points" % (tk, len(nonzero_x))
                 else:                        
                     nonzero_idxs = labels > 0
-                    nonzero_x = C[tk][linear_source, 1][:, np.newaxis][nonzero_idxs]
-                    nonzero_y = C[tk][linear_source, 2][:, np.newaxis][nonzero_idxs]
+                    nonzero_x = C[tk][linear_source, 1][:, np.newaxis][result_idxs[r][tk]][nonzero_idxs]
+                    nonzero_y = C[tk][linear_source, 2][:, np.newaxis][result_idxs[r][tk]][nonzero_idxs]
                     
                     plt.scatter(nonzero_x, nonzero_y, color='y')
                     print "For %s plotting %i positive points" % (tk, len(nonzero_x))

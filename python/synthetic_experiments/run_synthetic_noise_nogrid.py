@@ -39,6 +39,7 @@ off_diag_weak = 5.0
 bias_weak = np.zeros(gs.J)
 
 expt_label_template = 'synth/output_cluslocs%.2f_noise_free5'
+dataset_location = gs.dataset_location
 
 if __name__ == '__main__':
     gs.run_experiments(expt_label_template, snap_to_grid=False)#, 8, gs.nruns, 2, gs.nproportions)

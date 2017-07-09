@@ -34,7 +34,7 @@ import logging
 from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
 from ibcc import IBCC
-from gp_classifier_vb import GPClassifierVB
+from gp_classifier_svi import GPClassifierSVI
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, kendalltau, beta
 from sklearn.neighbors.classification import KNeighborsClassifier
@@ -427,7 +427,7 @@ class Tester(object):
                 gpgrid_opt = None
                 for l, ls in enumerate(ls_initial):
                     rate_ls = 2.0 / ls
-                    self.gpgrid = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
+                    self.gpgrid = GPClassifierSVI(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
                                                  shape_ls=2.0, rate_ls=rate_ls, ls_initial=[ls])
                     self.gpgrid.verbose = self.verbose
 #                     self.gpgrid.p_rep = 0.9
@@ -487,7 +487,7 @@ class Tester(object):
                     rate_ls = shape_ls / ls_initial
                     
                     # run standard IBCC
-                    self.gpgrid2 = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
+                    self.gpgrid2 = GPClassifierSVI(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
                                            shape_ls=shape_ls, rate_ls=rate_ls, ls_initial=[ls_initial])
                     self.gpgrid2.verbose = self.verbose
                     self.ibcc_combiner = IBCC(2, alpha0.shape[1], alpha0, self.nu0, K)                
