@@ -1,3 +1,4 @@
+from_apu/*
 synth/*
 prn/*/*
 /haiti_unosat_target_list.npy
