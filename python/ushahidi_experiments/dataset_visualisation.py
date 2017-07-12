@@ -5,7 +5,7 @@ Created on 6 May 2015
 '''
 import numpy as np
 import matplotlib.pyplot as plt
-from prediction_tests import UshahidiDataHandler as UDH
+from ushahididata import UshahidiDataHandler as UDH
 
 # Plot the distribution of gold labels
 

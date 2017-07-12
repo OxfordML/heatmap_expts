@@ -202,7 +202,8 @@ class Tester(object):
                      
     def evaluate_density(self, densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny):
    
-        gold_density_i = gold_density.flatten()
+        gold_density = gold_density.flatten()
+        gold_density_i = None
 
         for method in densityresults:
             print ''
@@ -228,12 +229,14 @@ class Tester(object):
                 nonreppoints = np.logical_not(np.in1d(targetids, repids))
                 est_density = est_density[nonreppoints]
                 est_density_var = est_density_var[nonreppoints]
-                gold_density_i = gold_density.flatten()[nonreppoints]  
+                if gold_density_i is None:
+                    gold_density = gold_density.flatten()[nonreppoints]  
                 
             #remove any blanked out locations where density is invalid
-            est_density = est_density[gold_density_i >= 0]     
-            est_density_var = est_density_var[gold_density_i >= 0]
-            gold_density_i = gold_density_i[gold_density_i >= 0]                                      
+            est_density = est_density[gold_density >= 0]     
+            est_density_var = est_density_var[gold_density >= 0]
+            if gold_density_i is None:
+                gold_density_i = gold_density[gold_density >= 0]                                      
 
             mced = nlpd_beta(gold_density_i, est_density, est_density_var) 
             mced = np.log2(np.e) * mced # in bits
@@ -384,8 +387,8 @@ class Tester(object):
                 def kde_prediction(targets):
                     
                     # start with a flat function
-                    logp_loc_giv_damage = np.log(1.0 / (nx * ny * 2.0))
-                    logp_loc_giv_nodamage = np.log(1.0 / (nx * ny * 2.0))
+                    logp_loc_giv_damage = np.log(1.0 / float(nx * ny * 2.0))
+                    logp_loc_giv_nodamage = np.log(1.0 / float(nx * ny * 2.0))
                     # put kernel density estimator over it, weighted by number of data points
                     w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 5)
                     w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 5)
@@ -470,7 +473,7 @@ class Tester(object):
                 densityresults['GP'] = gp_preds
                 density_var['GP'] = gp_var
             elif not np.any(self.ls_initial):
-                self.ls_initial = nx
+                self.ls_initial = float(nx)
                                
 # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
             if 'IBCC+GP' in self.methods:
@@ -637,8 +640,9 @@ class Tester(object):
                         rate_ls = shape_ls / ls_initial                    
                     
                         #HEATMAPBCC OBJECT
-                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
-                                      rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, 
+                            shape_s0=self.shape_s0, rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, 
+                            force_update_all_points=True)
                         self.heatmapcombiner.min_iterations = 4
                         self.heatmapcombiner.max_iterations = 200
                         self.heatmapcombiner.verbose = self.verbose

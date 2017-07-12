@@ -27,8 +27,8 @@ Nreps_initial = 75
 # increment the number of labels at each iteration
 Nrep_inc = 50
 
-nx = 100.0
-ny = 100.0
+nx = 100
+ny = 100
 
 def load_data():
     datahandler = UshahidiDataHandler(nx,ny, './data/')

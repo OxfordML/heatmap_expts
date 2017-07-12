@@ -118,7 +118,7 @@ featurenames = ['structural_damage_3']
 neg_sample_size = 0.2#0.5#0.1 # how many of the "no mark" labels to use?
 Nreps_initial_fraction = 0.1
 
-topdir = 'prn/'
+topdir = 'prn4/'
 expt_label_template = topdir + '%s'
 
 def load_data(featurename='structural_damage_3'):

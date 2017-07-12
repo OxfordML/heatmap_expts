@@ -10,12 +10,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging, os
 
+import run_synthetic_bias_nogrid as expmt_module
 #import run_synthetic_bias as expmt_module
 #import run_synthetic_noise as expmt_module
-# import run_synthetic_noise_nogrid as expmt_module
+#import run_synthetic_noise_nogrid as expmt_module
 #import ushahidi_loader_damage as expmt_module
 #import ushahidi_loader_emergencies as expmt_module
-import prn_simulation as expmt_module
+#import prn_simulation as expmt_module
 
 if hasattr(expmt_module, 'cluster_spreads'):
     cluster_spreads = expmt_module.cluster_spreads
@@ -174,8 +175,10 @@ def load_diff_results(nruns, weak_proportions, filename):
                 uq_results[cluster_spread][m][p_idx, :] = np.percentile(results_pcs[m], 75, axis=0)
     return avg_results, lq_results, uq_results, methods
 
-def plot_performance(Nreps_iter, weak_proportions, plot_separately, 
-                     cluster_spreads, filename, title, xlabel, ylabel, outfilename, plot_diffs = False):
+def plot_performance(Nreps_iter, weak_proportions, plot_separately, cluster_spreads, filename, title, xlabel, ylabel, 
+                     outfilename, plot_diffs = False, nats_to_bits=False, ylim=None):
+    
+    global plotnum # record the global plot number so we can add data to existing plots
     
     if plot_separately == 'nreps':
         separate_plot_variable = Nreps_iter
@@ -197,13 +200,20 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
 
     for lidx, l in enumerate(separate_plot_variable):
         for cs in cluster_spreads:
-            plt.figure()
+            plt.figure(plotnum)
             plt.title(title)
             for m in methods:
+                if m in methods_to_skip:
+                    continue
+                
                 if separate_idx == 1:
                     yvals = y_avg[cs][m][:, lidx]
                 elif separate_idx == 0:
                     yvals = y_avg[cs][m][lidx, :]
+                    
+                if nats_to_bits:
+                    yvals *= np.log2(np.e)
+                     
                 # don't plot the invalid outputs -- some metrics are not applicable to all methods and produce all NaNs
                 if np.sum(np.isnan(yvals)) != len(yvals):
                     plt.plot(xvals, yvals, label=m, color=colors[m], marker=marks[m])
@@ -213,19 +223,34 @@ def plot_performance(Nreps_iter, weak_proportions, plot_separately,
             #plt.ylim(0, 1.0)
             plt.legend(loc='best')
             plt.grid(True)
+    
             for m in methods:
+                if m in methods_to_skip:
+                    continue
+                                
                 if separate_idx == 1:
                     lvals = y_l[cs][m][:, lidx]
                     uvals = y_u[cs][m][:, lidx]
                 elif separate_idx == 0:
                     lvals = y_l[cs][m][lidx, :]
                     uvals = y_u[cs][m][lidx, :]
+                    
+                if nats_to_bits:
+                    uvals *= np.log2(np.e)
+                    lvals *= np.log2(np.e)                    
+                    
                 plt.fill_between(xvals, lvals, uvals, alpha=0.1, edgecolor=colors[m], facecolor=colors[m])
             
             outputdir = get_output_dir(plot_separately, l, cs)
             plt.savefig(outputdir + "/%s.pdf" % (outfilename))
+            plotnum += 1
+            
+            if ylim is not None:
+                plt.ylim(ylim)
 
 if __name__ == '__main__':
+    plotnum = 0 # count plots. Can run script multiple times to plot different data on same plots.
+    
     if hasattr(expmt_module, 'Nreports'):
         Nreports = expmt_module.Nreports
     else:
@@ -275,6 +300,8 @@ if __name__ == '__main__':
               'oneclassSVM': '*',
               '1-class SVM': '*'}    
     
+    methods_to_skip = []#['HeatmapBCC', 'GP', 'IBCC+GP']
+        
     # load results for the density estimation        
     # Root mean squared error    
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "rmsed.npy", 
@@ -284,31 +311,35 @@ if __name__ == '__main__':
                      "/rmsed.pdf")    
       
     # Mean Cross Entropy
+    if hasattr(expmt_module, 'topdir') and expmt_module.topdir == 'prn4/':
+        nats_to_bits = True # wasn't applied when these tests were run; in later tests, results are in bits already
+    else:
+        nats_to_bits = False    
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mced.npy",
                      "Negative Log Probability Density of State Probabilities",
                      'Number of crowdsourced labels', 
                      'NLPD or Cross Entropy (bits)',
-                     "/mce_density")            
+                     "/mce_density", nats_to_bits=nats_to_bits)            
  
 #     # Mean Cross Entropy
 #     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mced.npy",
 #                      "Improvement of HeatmapBCC in \n Negative Log Probability Density of State Probabilities",
 #                      'Number of crowdsourced labels', 
 #                      'NLPD or Cross Entropy (bits)',
-#                      "/mce_density_diff", True)
+#                      "/mce_density_diff", True, nats_to_bits=nats_to_bits)
 
-    # KL divergence
-    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
-                     "KL Divergence of State Probabilities",
-                     'Number of crowdsourced labels', 
-                     'KL-divergence',
-                     "/kl", False)
+#     # KL divergence
+#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
+#                      "KL Divergence of State Probabilities",
+#                      'Number of crowdsourced labels', 
+#                      'KL-divergence',
+#                      "/kl", False)
     
-    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
-                     "Improvement of HeatmapBCC in \n KL Divergence of State Probabilities",
-                     'Number of crowdsourced labels', 
-                     'KL-divergence',
-                     "/kl_diff", False)
+#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "kl.npy",
+#                      "Improvement of HeatmapBCC in \n KL Divergence of State Probabilities",
+#                      'Number of crowdsourced labels', 
+#                      'KL-divergence',
+#                      "/kl_diff", False)
 
     # load results for predicting individual data points
     # Brier score
@@ -323,7 +354,7 @@ if __name__ == '__main__':
                      "AUC ROC",
                      'Number of crowdsourced labels', 
                      'AUC',
-                     "/auc", False)
+                     "/auc", False, ylim=[0.55, 1.0])
     
 #     # Differences in AUC
 #     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "auc.npy",
@@ -331,20 +362,6 @@ if __name__ == '__main__':
 #                      'Number of crowdsourced labels', 
 #                      'AUC',
 #                      "/auc_diffs", True)
-     
-    # Mean cross entropy
-    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
-                     "Cross Entropy Classification Error",
-                     'Number of crowdsourced labels', 
-                     'Cross Entropy (bits)',
-                     "/mce_discrete", False)
-             
-#     # Mean cross entropy difference
-#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
-#                      "Improvement of HeatmapBCC in \n Cross Entropy Error",
-#                      'Number of crowdsourced labels', 
-#                      'Cross Entropy (bits)',
-#                      "/mce_discrete_diffs", True)
     
     # Accuracy
     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "acc.npy",
@@ -352,6 +369,25 @@ if __name__ == '__main__':
                      'Number of crowdsourced labels', 
                      'Fraction of Points Correctly Classified',
                      "/acc", False)
+    
+    methods_to_skip.append('NN')
+    methods_to_skip.append('MV') # don't plot these    
+     
+    # Mean cross entropy
+    plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
+                     "Cross Entropy Classification Error",
+                     'Number of crowdsourced labels', 
+                     'Cross Entropy (bits)',
+                     "/mce_discrete", False, nats_to_bits=nats_to_bits)
+             
+#     # Mean cross entropy difference
+#     plot_performance(Nreps_iter, weak_proportions, 'proportions', cluster_spreads, "mce.npy",
+#                      "Improvement of HeatmapBCC in \n Cross Entropy Error",
+#                      'Number of crowdsourced labels', 
+#                      'Cross Entropy (bits)',
+#                      "/mce_discrete_diffs", True, nats_to_bits=nats_to_bit)
+
+    methods_to_skip = []
                     
     # PLOT PROPORTIONS -------------------------------------------------------------------------------------------------
     # load results for the density estimation        

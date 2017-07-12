@@ -9,7 +9,7 @@ import logging
 import os
 
 import matplotlib.pyplot as plt
-from matplotlib.mlab import griddata
+from scipy.interpolate import griddata
 from mpl_toolkits.mplot3d import Axes3D
 
 # HELPER FUNCTIONS -------------------------------------------------------------------------------------------------------
@@ -38,12 +38,12 @@ def logit(g):
 
 # EXPERIMENT CONFIG ---------------------------------------------------------------------------------------------------
 
-RESET_ALL_DATA = False
+RESET_ALL_DATA = True
 PLOT_SYNTH_DATA = False
 SAVE_RESULTS = True
 
 methods = [
-           'MV',
+#           'MV',
 #            'NN',
 #            'SVM',
 #            'oneclassSVM',
@@ -51,7 +51,7 @@ methods = [
 #            'IBCC',
 #            'GP',
 #            'IBCC+GP',
-#            'HeatmapBCC'
+            'HeatmapBCC'
            ]
 
 # GROUND TRUTH
@@ -92,7 +92,7 @@ S = 20 # number of reporters
 nproportions = 5
 if nproportions > S:
     nproportions = S
-weak_proportions = np.arange(0.0, nproportions)
+weak_proportions = np.arange(1.0, nproportions - 1)
 weak_proportions /= (nproportions - 1)
 
 # Run only lowest proportion
@@ -150,7 +150,9 @@ def plot_density(nx, ny, x_all, y_all, f_all, title='ground truth density functi
     x_plot, y_plot = np.meshgrid(xi, yi)
     if apply_sigmoid:
         f_all = sigmoid(f_all)
-    z_plot = griddata(x_all.reshape(-1), y_all.reshape(-1), f_all.reshape(-1), xi, yi, interp='linear')
+    
+    z_plot = griddata((x_all.reshape(-1), y_all.reshape(-1)), f_all.reshape(-1), (xi, yi), 
+                      method='linear')
 
     if not ax:
         fig = plt.figure()

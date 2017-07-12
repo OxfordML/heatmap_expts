@@ -25,10 +25,6 @@ weak_proportions = gs.weak_proportions
 
 # EXPERIMENT CONFIG ---------------------------------------------------------------------------------------------------
 
-RESET_ALL_DATA = False
-PLOT_SYNTH_DATA = False
-SAVE_RESULTS = True
-
 diag_reliable = 10.0
 off_diag_reliable = 1.0
 bias_reliable = np.zeros(gs.J)
@@ -38,7 +34,7 @@ diag_weak = 5.0
 off_diag_weak = 5.0
 bias_weak = np.zeros(gs.J)
 
-expt_label_template = 'synth/output_cluslocs%.2f_noise_grid5'
+expt_label_template = 'synth/output_cluslocs%.2f_noise_grid17'
 dataset_location = gs.dataset_location
 
 if __name__ == '__main__':
