@@ -1,4 +1,4 @@
-*.DS_store
+**/.DS_Store
 *.py~
 *.pyc
 *.profle
@@ -17,6 +17,7 @@ data/synth/output_cluslocs0.20_bias_test3
 data/synth/output_cluslocs0.20_bias_test4
 data/synth/output_cluslocs0.50_bias_test1
 data/synth/output_cluslocs1.00_bias_test1
+data/ushahidi_emergencies_flatterpriors/*
 data/ushahidi_damage/synth_sparse_d0
 data/ushahidi_damage/synth_sparse_d1
 data/ushahidi_damage/synth_sparse_d2

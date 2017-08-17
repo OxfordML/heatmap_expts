@@ -17,7 +17,7 @@ from scipy.sparse import coo_matrix
 
 RELOAD_GOLD = False # load the gold data from file, or compute from scratch?
 
-expt_label_template = "/ushahidi_emergencies4/"
+expt_label_template = "/ushahidi_emergencies_evenflatterpriors/"
     
 nruns = 20 # can use different random subsets of the reports C
 
@@ -82,14 +82,16 @@ if __name__ == '__main__':
     C, Nreports, _, _, _, _ = load_data()
 
     # default hyper-parameters
-    alpha0 = np.array([[100.0, 1.0], [1.0, 100.0]])[:,:,np.newaxis]
+#     alpha0 = np.array([[2.0, 1.0], [1.0, 2.0]])[:,:,np.newaxis]
+    alpha0 = np.array([[2.0, 1.0], [1.0, 2.0]])[:,:,np.newaxis]
+    
     #alpha0 = np.tile(alpha0, (1,1,3))
     # set stronger priors for more meaningful categories
     #alpha0[:,:,1] = np.array([[5.0, 1.0], [1.0, 5.0]]) # confident agents
     #alpha0[:,:,2] = np.array([[1.0, 1.0], [1.0, 1.0]]) # agents with no prior knowledge of correlations
     #clusteridxs_all = np.array([1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 2, 2, 2, 0, 0, 2, 2])
     # set an uninformative prior over the spatial GP
-    nu0 = np.array([2000.0, 1000.0])
+    nu0 = np.array([6.0, 1.0])
     z0 = nu0[1] / np.sum(nu0)
 
     shape_s0 = np.sum(nu0) / 2.0 #2.0
