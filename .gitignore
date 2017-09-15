@@ -1,3 +1,4 @@
+**/.DS_Store
 *.py~
 *.pyc
 *.profle
@@ -16,6 +17,7 @@ data/synth/output_cluslocs0.20_bias_test3
 data/synth/output_cluslocs0.20_bias_test4
 data/synth/output_cluslocs0.50_bias_test1
 data/synth/output_cluslocs1.00_bias_test1
+data/ushahidi_emergencies_flatterpriors/*
 data/ushahidi_damage/synth_sparse_d0
 data/ushahidi_damage/synth_sparse_d1
 data/ushahidi_damage/synth_sparse_d2
@@ -52,3 +54,6 @@ random9.png
 /lengthscale_prn_test_structural_damage_2.png
 /lengthscale_prn_test_structural_damage_3.png
 /lengthscale_prn_test_tarp.png
+data/lengthscale_sim_expt/synth_sparse_lengthscale_sim_data
+output/lengthscale_plots
+output/synth
