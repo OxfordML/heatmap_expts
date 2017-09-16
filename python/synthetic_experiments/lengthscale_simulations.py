@@ -20,7 +20,7 @@ from scipy.stats import beta
 from sklearn.metrics import accuracy_score, roc_auc_score
 import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal as mvn, bernoulli
-#import gen_synthetic
+#import alan
 from run_synthetic_case_studies import plot_heatmap
 from sklearn.gaussian_process import GaussianProcessClassifier as GPC
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel
@@ -225,6 +225,8 @@ def test_vb_gp(ls_i, train, test, vm='sample'):
     
     f_train, _ = gpgrid.predict_f((xrep_train, yrep_train))
     
+    gp_preds = gp_preds.flatten()
+    
     return np.round(gp_preds), gp_preds, lb, f_train.flatten(), dll
 
 def test_sklearn_gp(ls_i, train, test):
@@ -285,7 +287,7 @@ def plot_results(methodlabel, nmethods, methodidx, col, figures, lb_results, kf,
     p4 = plt.figure(figures[3].number)
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
         ax = p4.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
-        #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=ax)
+        #alan.plot_density(nx, ny, x_all, y_all, chosen_rho_mean, ax=ax)
         plot_heatmap(nx, ny, x_all, y_all, chosen_rho_mean, methodlabel, fig=ax, colorbar_on=False)
     else:
         plt.subplot(np.ceil(nmethods/2.0), 2, methodidx)
@@ -299,7 +301,7 @@ def plot_results(methodlabel, nmethods, methodidx, col, figures, lb_results, kf,
     p5 = plt.figure(figures[4].number)
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
         ax = p5.add_subplot(np.ceil(nmethods/2.0), 2, methodidx)
-        #gen_synthetic.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=ax)
+        #alan.plot_density(nx, ny, x_all, y_all, chosen_f_train, ax=ax)
         plot_heatmap(nx, ny, xreports, yreports, chosen_f_train, methodlabel, fig=ax, colorbar_on=False)
     else:
         plt.subplot(np.ceil(nmethods/2.0), 2, methodidx)        
@@ -533,7 +535,7 @@ if __name__ == '__main__':
     p5 = plt.figure(p5.number)
     if experiment_name == '2D_toy' or experiment_name=='2D_toy_noisyworkers':
         ax = p5.add_subplot(np.ceil((len(methods)+1)/2.0), 2, 1)
-        #gen_synthetic.plot_density(nx, ny, x_all, y_all, f_all, ax=ax)
+        #alan.plot_density(nx, ny, x_all, y_all, f_all, ax=ax)
         plot_heatmap(nx, ny, x_all, y_all, f_all, 'ground truth latent f', fig=ax)
     else:        
         plt.subplot(np.ceil((len(methods)+1)/2.0), 2, 1)        
@@ -541,7 +543,10 @@ if __name__ == '__main__':
         
     plt.legend(loc='best')
     
-    outputpath = './output/lengthscale_plots/%s' % experiment_name
+    outputpath = './output/lengthscale_plots/'
+    if not os.path.isdir(outputpath):
+        os.mkdir(outputpath)
+    outputpath += '%s' % experiment_name
     if not os.path.isdir(outputpath):
         os.mkdir(outputpath)
     outputpath += '/%s'

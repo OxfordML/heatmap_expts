@@ -2,9 +2,9 @@
 
 This project also depends on:
 
-   * scipy, numpy, matplotlib
-   * https://github.com/edwinrobots/HeatMapBCC
-   * https://github.com/edwinrobots/pyIBCC 
+   * scipy (tested with 0.19.1), scikit-learn (tested with 0.19.0), numpy (tested with 1.13), matplotlib (tested with 2.0.0)
+   * https://github.com/edwinrobots/HeatMapBCC (master branch)
+   * https://github.com/edwinrobots/pyIBCC (master branch)
    
 You will need to add the 'python' subdirectory of each project to the Python path.
    
@@ -24,3 +24,4 @@ For the PRN satellite image dataset:
 For Ushahidi dataset:
    * ushahidi_experiments/ushahidi_loader_emergencies.py
    
+For plotting heatmaps, please see the repository HeatMapBCC
