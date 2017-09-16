@@ -24,4 +24,4 @@ For the PRN satellite image dataset:
 For Ushahidi dataset:
    * ushahidi_experiments/ushahidi_loader_emergencies.py
    
-For plotting heatmaps, please see the repository HeatMapBCC
+For plotting heatmaps, from the repository HeatMapBCC run python/crowdscanner/ushahidiheatmap.py
