@@ -28,7 +28,7 @@ For plotting heatmaps, from the repository HeatMapBCC run python/crowdscanner/us
 
 The class that implements heatmapBCC is in the repository https://github.com/edwinrobots/HeatMapBCC in file 
 python/heatmapbcc.py. The main functions you need are:
--- constructor for passing in hyperparameters
--- combine_classifications() to train the model and predict at the observed report locations
--- predict() to predict at new locations after you have trained the model using combined_classifications()
+   * constructor for passing in hyperparameters
+   * combine_classifications() to train the model and predict at the observed report locations
+   * predict() to predict at new locations after you have trained the model using combined_classifications()
 
