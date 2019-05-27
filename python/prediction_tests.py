@@ -34,7 +34,7 @@ import logging
 from heatmapbcc import HeatMapBCC
 from ibccperformance import Evaluator
 from ibcc import IBCC
-from gp_classifier_vb import GPClassifierVB
+from gp_classifier_svi import GPClassifierSVI
 from scipy.sparse import coo_matrix
 from scipy.stats import gaussian_kde, kendalltau, beta
 from sklearn.neighbors.classification import KNeighborsClassifier
@@ -202,7 +202,8 @@ class Tester(object):
                      
     def evaluate_density(self, densityresults, density_var, Nlabels, gold_density, C_all, targetsx, targetsy, nx, ny):
    
-        gold_density_i = gold_density.flatten()
+        gold_density = gold_density.flatten()
+        gold_density_i = None
 
         for method in densityresults:
             print ''
@@ -228,12 +229,14 @@ class Tester(object):
                 nonreppoints = np.logical_not(np.in1d(targetids, repids))
                 est_density = est_density[nonreppoints]
                 est_density_var = est_density_var[nonreppoints]
-                gold_density_i = gold_density.flatten()[nonreppoints]  
+                if gold_density_i is None:
+                    gold_density = gold_density.flatten()[nonreppoints]  
                 
             #remove any blanked out locations where density is invalid
-            est_density = est_density[gold_density_i >= 0]     
-            est_density_var = est_density_var[gold_density_i >= 0]
-            gold_density_i = gold_density_i[gold_density_i >= 0]                                      
+            est_density = est_density[gold_density >= 0]     
+            est_density_var = est_density_var[gold_density >= 0]
+            if gold_density_i is None:
+                gold_density_i = gold_density[gold_density >= 0]                                      
 
             mced = nlpd_beta(gold_density_i, est_density, est_density_var) 
             mced = np.log2(np.e) * mced # in bits
@@ -282,7 +285,7 @@ class Tester(object):
             density_var = {}
     
             # indicator array to show whether reports are positive or negative
-            posreports = (C[:, 3] >= 1).astype(float)
+            posreports = (C[:, 3] >= 1).astype(float) # it previously had '==' instead of '>='
             negreports = (C[:, 3] == 0).astype(float)
     
             # Report coords for this round
@@ -384,8 +387,8 @@ class Tester(object):
                 def kde_prediction(targets):
                     
                     # start with a flat function
-                    logp_loc_giv_damage = np.log(1.0 / (nx * ny * 2.0))
-                    logp_loc_giv_nodamage = np.log(1.0 / (nx * ny * 2.0))
+                    logp_loc_giv_damage = np.log(1.0 / float(nx * ny * 2.0))
+                    logp_loc_giv_nodamage = np.log(1.0 / float(nx * ny * 2.0))
                     # put kernel density estimator over it, weighted by number of data points
                     w_damage = posinputdata.shape[1] / float(posinputdata.shape[1] + 5)
                     w_nodamage = neginputdata.shape[1] / float(neginputdata.shape[1] + 5)
@@ -427,7 +430,7 @@ class Tester(object):
                 gpgrid_opt = None
                 for l, ls in enumerate(ls_initial):
                     rate_ls = 2.0 / ls
-                    self.gpgrid = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
+                    self.gpgrid = GPClassifierSVI(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0, 
                                                  shape_ls=2.0, rate_ls=rate_ls, ls_initial=[ls])
                     self.gpgrid.verbose = self.verbose
 #                     self.gpgrid.p_rep = 0.9
@@ -470,7 +473,7 @@ class Tester(object):
                 densityresults['GP'] = gp_preds
                 density_var['GP'] = gp_var
             elif not np.any(self.ls_initial):
-                self.ls_initial = nx
+                self.ls_initial = float(nx)
                                
 # RUN SEPARATE IBCC AND GP STAGES ----------------------------------------------------------------------------------
             if 'IBCC+GP' in self.methods:
@@ -487,7 +490,7 @@ class Tester(object):
                     rate_ls = shape_ls / ls_initial
                     
                     # run standard IBCC
-                    self.gpgrid2 = GPClassifierVB(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
+                    self.gpgrid2 = GPClassifierSVI(2, z0=self.z0, shape_s0=self.shape_s0, rate_s0=self.rate_s0,
                                            shape_ls=shape_ls, rate_ls=rate_ls, ls_initial=[ls_initial])
                     self.gpgrid2.verbose = self.verbose
                     self.ibcc_combiner = IBCC(2, alpha0.shape[1], alpha0, self.nu0, K)                
@@ -637,8 +640,9 @@ class Tester(object):
                         rate_ls = shape_ls / ls_initial                    
                     
                         #HEATMAPBCC OBJECT
-                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, shape_s0=self.shape_s0, 
-                                      rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, force_update_all_points=True)
+                        self.heatmapcombiner = HeatMapBCC(nx, ny, 2, alpha0.shape[1], alpha0, K, z0=self.z0, 
+                            shape_s0=self.shape_s0, rate_s0=self.rate_s0, shape_ls=shape_ls, rate_ls=rate_ls, 
+                            force_update_all_points=True)
                         self.heatmapcombiner.min_iterations = 4
                         self.heatmapcombiner.max_iterations = 200
                         self.heatmapcombiner.verbose = self.verbose
